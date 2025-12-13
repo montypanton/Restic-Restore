@@ -11,7 +11,7 @@ interface TimelineViewProps {
 
 /**
  * Displays snapshots in a timeline view grouped by date.
- * Supports expanding snapshots to view details and load statistics on demand.
+ * Can expand snapshots to view details and load statistics on demand.
  */
 export const TimelineView: React.FC<TimelineViewProps> = ({
     snapshots,
@@ -164,17 +164,18 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
                             style={{
                                 position: 'sticky',
                                 top: 0,
-                                fontSize: '14px',
+                                fontSize: '18px',
                                 fontWeight: 600,
                                 color: 'var(--color-text-primary)',
-                                marginBottom: '16px',
-                                paddingTop: '16px',
-                                paddingBottom: '12px',
+                                marginBottom: '20px',
+                                paddingTop: '20px',
+                                paddingBottom: '16px',
                                 marginTop: '0',
-                                borderBottom: '1px solid var(--color-border)',
+                                borderBottom: '2px solid var(--color-border)',
                                 backgroundColor: 'var(--color-bg-white)',
                                 zIndex: 100,
-                                boxShadow: '0 1px 0 0 var(--color-bg-white)'
+                                boxShadow: '0 2px 0 0 var(--color-bg-white)',
+                                letterSpacing: '0.02em'
                             }}
                         >
                             {group.date}
@@ -225,9 +226,10 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                                 <span
                                                     style={{
-                                                        fontSize: '18px',
+                                                        fontSize: '20px',
                                                         fontWeight: 600,
-                                                        color: 'var(--color-text-primary)'
+                                                        color: 'var(--color-text-primary)',
+                                                        letterSpacing: '0.01em'
                                                     }}
                                                 >
                                                     {formatTime(snapshot.time)}
@@ -235,12 +237,13 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
                                                 {isLatest && (
                                                     <span
                                                         style={{
-                                                            border: '1px solid var(--color-border)',
+                                                            border: '1px solid #3b82f6',
                                                             borderRadius: '9999px',
                                                             padding: '2px 8px',
                                                             fontSize: '12px',
                                                             fontWeight: 500,
-                                                            color: 'var(--color-text-primary)'
+                                                            color: '#3b82f6',
+                                                            backgroundColor: '#eff6ff'
                                                         }}
                                                     >
                                                         LATEST
@@ -303,7 +306,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
                                                                 marginBottom: '4px'
                                                             }}
                                                         >
-                                                            Size
+                                                            Snapshot Size
                                                         </div>
                                                         <div
                                                             style={{

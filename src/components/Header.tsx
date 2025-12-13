@@ -7,6 +7,7 @@ interface HeaderProps {
     lastBackupTime?: string;
     onRefresh?: () => void;
     isRefreshing?: boolean;
+    onSettings?: () => void;
 }
 
 /**
@@ -17,7 +18,8 @@ export const Header: React.FC<HeaderProps> = ({
     snapshotCount,
     lastBackupTime,
     onRefresh,
-    isRefreshing = false
+    isRefreshing = false,
+    onSettings
 }) => {
     const containerStyle: React.CSSProperties = {
         padding: '24px',
@@ -45,12 +47,25 @@ export const Header: React.FC<HeaderProps> = ({
         fontSize: '12px',
         fontWeight: 500,
         backgroundColor: 'white',
-        border: '1px solid var(--color-border)',
+        border: '1px solid #10b981',
         borderRadius: '9999px',
         cursor: isRefreshing ? 'not-allowed' : 'pointer',
         transition: 'all 0.15s ease',
-        opacity: isRefreshing ? 0.6 : 1
+        opacity: isRefreshing ? 0.6 : 1,
+        color: '#10b981'
     };
+
+    const settingsButtonStyle: React.CSSProperties = {
+        padding: '2px 8px',
+        fontSize: '12px',
+        fontWeight: 500,
+        backgroundColor: 'white',
+        border: '1px solid var(--color-border)',
+        borderRadius: '9999px',
+        cursor: 'pointer',
+        transition: 'all 0.15s ease'
+    };
+
 
     const formatLastBackup = (time?: string) => {
         if (!time) return 'Never';
@@ -92,7 +107,7 @@ export const Header: React.FC<HeaderProps> = ({
                         style={refreshButtonStyle}
                         onMouseEnter={(e) => {
                             if (!isRefreshing) {
-                                e.currentTarget.style.backgroundColor = 'var(--color-bg-hover)';
+                                e.currentTarget.style.backgroundColor = '#f0fdf4';
                             }
                         }}
                         onMouseLeave={(e) => {
@@ -101,6 +116,21 @@ export const Header: React.FC<HeaderProps> = ({
                         title="Refresh snapshots"
                     >
                         {isRefreshing ? 'Refreshing...' : 'Refresh'}
+                    </button>
+                )}
+                {onSettings && (
+                    <button
+                        onClick={onSettings}
+                        style={settingsButtonStyle}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = 'var(--color-bg-hover)';
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = 'white';
+                        }}
+                        title="Repository settings"
+                    >
+                        Settings
                     </button>
                 )}
             </div>

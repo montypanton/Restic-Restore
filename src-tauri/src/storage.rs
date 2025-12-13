@@ -28,14 +28,14 @@ pub struct StatsCache {
 }
 
 /**
- * Returns the path to the application's config directory (Documents/restic-gui/).
+ * Returns the path to the application's config directory (Documents/restic-restore-data/).
  * Creates the directory if it doesn't exist.
  */
 pub fn get_config_dir() -> Result<PathBuf, String> {
     let documents_dir = dirs::document_dir()
         .ok_or_else(|| "Could not find Documents directory".to_string())?;
     
-    let config_dir = documents_dir.join("restic-gui");
+    let config_dir = documents_dir.join("restic-restore-data");
     
     if !config_dir.exists() {
         fs::create_dir_all(&config_dir)
@@ -45,7 +45,7 @@ pub fn get_config_dir() -> Result<PathBuf, String> {
     Ok(config_dir)
 }
 
-/// Returns the path to the main config file (Documents/restic-gui/config.json)
+/// Returns the path to the main config file (Documents/restic-restore-data/config.json)
 pub fn get_config_file_path() -> Result<PathBuf, String> {
     let config_dir = get_config_dir()?;
     Ok(config_dir.join("config.json"))
@@ -115,5 +115,17 @@ pub fn load_stats_cache(repo_id: &str) -> Result<StatsCache, String> {
         .map_err(|e| format!("Failed to parse stats cache file: {}", e))?;
     
     Ok(cache)
+}
+
+/// Deletes a repository's stats cache file from disk
+pub fn delete_stats_cache(repo_id: &str) -> Result<(), String> {
+    let cache_path = get_stats_cache_path(repo_id)?;
+    
+    if cache_path.exists() {
+        fs::remove_file(&cache_path)
+            .map_err(|e| format!("Failed to delete stats cache file: {}", e))?;
+    }
+    
+    Ok(())
 }
 

@@ -1,5 +1,5 @@
 use crate::models::{Snapshot, FileNode};
-use crate::storage::{AppConfig, SavedRepository, StatsCache, save_config, load_config, save_stats_cache, load_stats_cache};
+use crate::storage::{AppConfig, SavedRepository, StatsCache, save_config, load_config, save_stats_cache, load_stats_cache, delete_stats_cache};
 use std::process::Command;
 use tauri::command;
 use serde_json::Value;
@@ -180,6 +180,15 @@ pub async fn get_snapshot_stats(repo: String, password: String, snapshot_id: Str
     Ok(stats)
 }
 
+/// Returns the total size of the repository on disk (all snapshots combined)
+#[command]
+pub async fn get_repository_stats(repo: String, password: String) -> Result<serde_json::Value, String> {
+    let output = run_restic(&repo, &password, &["stats", "--json", "--mode", "raw-data"])?;
+    let stats: serde_json::Value = serde_json::from_str(&output)
+        .map_err(|e| format!("Failed to parse repository stats JSON: {}", e))?;
+    Ok(stats)
+}
+
 /// Saves repository configurations to disk
 #[command]
 pub async fn save_repositories(repositories: Vec<SavedRepository>) -> Result<(), String> {
@@ -213,4 +222,14 @@ pub async fn save_snapshot_stats_cache(repo_id: String, cache: StatsCache) -> Re
 #[command]
 pub async fn load_snapshot_stats_cache(repo_id: String) -> Result<StatsCache, String> {
     load_stats_cache(&repo_id)
+}
+
+/// Removes a repository from the config and deletes its stats cache
+#[command]
+pub async fn remove_repository(repo_id: String) -> Result<(), String> {
+    let mut config = load_config()?;
+    config.repositories.retain(|r| r.id != repo_id);
+    save_config(&config)?;
+    delete_stats_cache(&repo_id)?;
+    Ok(())
 }

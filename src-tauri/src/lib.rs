@@ -20,11 +20,13 @@ pub fn run() {
             browse_snapshot,
             browse_snapshot_full,
             get_snapshot_stats,
+            get_repository_stats,
             save_repositories,
             load_repositories,
             get_config_path,
             save_snapshot_stats_cache,
-            load_snapshot_stats_cache
+            load_snapshot_stats_cache,
+            remove_repository
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

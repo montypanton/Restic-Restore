@@ -102,14 +102,60 @@ export function FileBrowser({ snapshot, repo, password, onClose }: FileBrowserPr
 
     const handleCheckboxChange = (file: FileNode, checked: boolean) => {
         const newSelected = new Map(selectedItems);
+        
         if (checked) {
             newSelected.set(file.path, {
                 file,
                 restorePath: file.path
             });
+            
+            // Remove redundant child selections since parent directory includes them
+            if (file.type === 'dir') {
+                const dirPath = file.path.endsWith('/') ? file.path : file.path + '/';
+                const keysToRemove: string[] = [];
+                newSelected.forEach((item, path) => {
+                    if (path !== file.path && path.startsWith(dirPath)) {
+                        keysToRemove.push(path);
+                    }
+                });
+                keysToRemove.forEach(key => newSelected.delete(key));
+            }
         } else {
             newSelected.delete(file.path);
+            
+            // When unchecking a child of a selected directory, replace parent with individual siblings
+            const parentSelected = Array.from(newSelected.keys()).find(selectedPath => {
+                const selectedItem = newSelected.get(selectedPath);
+                if (selectedItem?.file.type === 'dir' && selectedPath !== file.path) {
+                    const dirPath = selectedPath.endsWith('/') ? selectedPath : selectedPath + '/';
+                    return file.path.startsWith(dirPath);
+                }
+                return false;
+            });
+            
+            if (parentSelected) {
+                newSelected.delete(parentSelected);
+                
+                const parentDirPath = parentSelected.endsWith('/') ? parentSelected : parentSelected + '/';
+                allFiles.forEach(childFile => {
+                    if (childFile.path.startsWith(parentDirPath) && 
+                        childFile.path !== parentSelected &&
+                        childFile.path !== file.path) {
+                        const relativePath = childFile.path.substring(parentDirPath.length);
+                        const isDirectChild = !relativePath.includes('/') || 
+                                            (relativePath.endsWith('/') && relativePath.split('/').filter(p => p).length === 1);
+                        
+                        if (isDirectChild) {
+                            newSelected.set(childFile.path, {
+                                file: childFile,
+                                restorePath: childFile.path
+                            });
+                        }
+                    }
+                });
+            }
         }
+        
         setSelectedItems(newSelected);
     };
 
@@ -615,13 +661,27 @@ export function FileBrowser({ snapshot, repo, password, onClose }: FileBrowserPr
                             </div>
                         ) : files.length === 0 ? (
                             <div style={emptyStateStyle}>
-                                <div style={{ fontSize: '32px', marginBottom: '12px', opacity: 0.3 }}>📁</div>
+                                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.3, marginBottom: '12px' }}>
+                                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                                </svg>
                                 <div>This directory is empty</div>
                             </div>
                         ) : (
                             <>
                                 {files.map((file, idx, array) => {
-                                    const isSelected = selectedItems.has(file.path);
+                                    const isDirectlySelected = selectedItems.has(file.path);
+                                    
+                                    const hasParentSelected = Array.from(selectedItems.keys()).some(selectedPath => {
+                                        const selectedItem = selectedItems.get(selectedPath);
+                                        if (selectedItem?.file.type === 'dir' && selectedPath !== file.path) {
+                                            const dirPath = selectedPath.endsWith('/') ? selectedPath : selectedPath + '/';
+                                            return file.path.startsWith(dirPath);
+                                        }
+                                        return false;
+                                    });
+                                    
+                                    const isSelected = isDirectlySelected || hasParentSelected;
+                                    
                                     return (
                                         <div
                                             key={idx}
@@ -644,16 +704,27 @@ export function FileBrowser({ snapshot, repo, password, onClose }: FileBrowserPr
                                                         e.stopPropagation();
                                                         handleCheckboxChange(file, e.target.checked);
                                                     }}
-                                                    style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                                                    style={{ 
+                                                        width: '18px', 
+                                                        height: '18px', 
+                                                        cursor: 'pointer'
+                                                    }}
                                                 />
                                             </div>
                                             <div
                                                 style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: file.type === 'dir' ? 'pointer' : 'default' }}
                                                 onClick={() => handleItemClick(file)}
                                             >
-                                                <span style={{ fontSize: '18px' }}>
-                                                    {file.type === 'dir' ? '📁' : '📄'}
-                                                </span>
+                                                {file.type === 'dir' ? (
+                                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                                                    </svg>
+                                                ) : (
+                                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                        <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                                                        <polyline points="13 2 13 9 20 9"></polyline>
+                                                    </svg>
+                                                )}
                                                 <span style={{ fontSize: '14px', color: 'black' }}>{file.name}</span>
                                             </div>
                                             <div style={{ fontSize: '13px', color: '#666' }}>
@@ -729,9 +800,16 @@ export function FileBrowser({ snapshot, repo, password, onClose }: FileBrowserPr
                                             borderBottom: idx === array.length - 1 ? 'none' : '1px solid #e5e7eb'
                                         }}
                                     >
-                                        <span style={{ fontSize: '20px' }}>
-                                            {item.file.type === 'dir' ? '📁' : '📄'}
-                                        </span>
+                                        {item.file.type === 'dir' ? (
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                                            </svg>
+                                        ) : (
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                                                <polyline points="13 2 13 9 20 9"></polyline>
+                                            </svg>
+                                        )}
                                         <span style={{ fontSize: '14px', fontWeight: 500, minWidth: '120px', flex: '0 0 auto' }}>
                                             {item.file.name}
                                         </span>

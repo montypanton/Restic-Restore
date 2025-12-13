@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { ask } from '@tauri-apps/plugin-dialog';
 import './App.css';
 import { Layout } from './components/Layout';
 import { Sidebar } from './components/Sidebar';
 import { MainContent } from './components/MainContent';
 import { ConnectionForm } from './components/ConnectionForm';
 import { FileBrowser } from './components/FileBrowser';
+import { SettingsModal } from './components/SettingsModal';
 import { Repository, Snapshot, SnapshotWithStats, SavedRepository, StatsCache, FileNode } from './types';
 
 const STATS_LOAD_LIMIT = 10;
@@ -33,6 +35,7 @@ function App() {
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const [showAddRepo, setShowAddRepo] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [browsingSnapshot, setBrowsingSnapshot] = useState<{ snapshot: Snapshot; files: FileNode[] } | null>(null);
 
   const formatBytes = useCallback((bytes: number): string => {
@@ -137,7 +140,6 @@ function App() {
     const results = await Promise.allSettled(statsPromises);
 
     const statsMap = new Map<string, { size: string; fileCount: number }>();
-    let latestSnapshotSize: string | undefined;
 
     results.forEach((result, index) => {
       if (result.status === 'fulfilled' && result.value) {
@@ -146,10 +148,6 @@ function App() {
           size: stat.size,
           fileCount: stat.fileCount
         });
-        
-        if (index === 0) {
-          latestSnapshotSize = stat.size;
-        }
       }
     });
 
@@ -161,16 +159,6 @@ function App() {
             : s
         )
       );
-
-      if (latestSnapshotSize) {
-        setRepositories(prev =>
-          prev.map(r =>
-            r.id === repoId
-              ? { ...r, totalSize: latestSnapshotSize }
-              : r
-          )
-        );
-      }
 
       setSnapshotCache(prev => {
         const cached = prev.get(repoId);
@@ -269,7 +257,33 @@ function App() {
   }, [selectedRepoId, repoConnections, formatBytes]);
 
   /**
-   * Loads snapshot list for a repository with intelligent caching.
+   * Loads repository size (actual disk usage).
+   */
+  const loadRepositoryStats = useCallback(async (repoId: string) => {
+    const connection = repoConnections.get(repoId);
+    if (!connection) return;
+
+    try {
+      const repoStats = await invoke<any>('get_repository_stats', {
+        repo: connection.path,
+        password: connection.password
+      });
+
+      const repoSize = formatBytes(repoStats.total_size);
+      setRepositories(prev =>
+        prev.map(r =>
+          r.id === repoId
+            ? { ...r, totalSize: repoSize }
+            : r
+        )
+      );
+    } catch (err) {
+      console.error('Failed to load repository stats:', err);
+    }
+  }, [repoConnections, formatBytes]);
+
+  /**
+   * Loads snapshot list for a repository with caching.
    * Loads stats from persistent cache immediately, then fetches missing stats in background.
    */
   const loadSnapshots = useCallback(async (repoId: string) => {
@@ -327,16 +341,7 @@ function App() {
         )
       );
 
-      if (sortedSnapshotList.length > 0 && diskCache.stats[sortedSnapshotList[0].id]) {
-        const latestSize = formatBytes(diskCache.stats[sortedSnapshotList[0].id].total_size);
-        setRepositories(prev =>
-          prev.map(r =>
-            r.id === repoId
-              ? { ...r, totalSize: latestSize }
-              : r
-          )
-        );
-      }
+      loadRepositoryStats(repoId);
 
       setLoading(false);
 
@@ -353,7 +358,7 @@ function App() {
       console.error('Load snapshots error:', err);
       setLoading(false);
     }
-  }, [repoConnections, snapshotCache, loadStatsInBackground]);
+  }, [repoConnections, snapshotCache, loadStatsInBackground, loadRepositoryStats]);
 
   /**
    * Connects to a new repository and adds it to the saved list.
@@ -404,6 +409,7 @@ function App() {
       setSnapshots(snapshotsWithoutStats);
       setLoading(false);
 
+      loadRepositoryStats(repoId);
       loadStatsInBackground(snapshotList, repoPath, password, repoId);
 
     } catch (err) {
@@ -411,7 +417,7 @@ function App() {
       console.error('Connection error:', err);
       setLoading(false);
     }
-  }, [loadStatsInBackground, repositories, saveRepositoriesToDisk]);
+  }, [loadStatsInBackground, loadRepositoryStats, repositories, saveRepositoriesToDisk]);
 
   const handleBrowse = useCallback((snapshot: SnapshotWithStats) => {
     const connection = repoConnections.get(selectedRepoId || '');
@@ -432,6 +438,10 @@ function App() {
     setBrowsingSnapshot(null);
   }, []);
 
+  const handleCloseSettings = useCallback(() => {
+    setShowSettings(false);
+  }, []);
+
   const handleRefresh = useCallback(async () => {
     if (!selectedRepoId || isRefreshing) return;
     
@@ -445,6 +455,38 @@ function App() {
     await loadSnapshots(selectedRepoId);
     setIsRefreshing(false);
   }, [selectedRepoId, isRefreshing, loadSnapshots]);
+
+  const handleSettings = useCallback(() => {
+    setShowSettings(true);
+  }, []);
+
+  const handleRemoveRepository = useCallback(async () => {
+    if (!selectedRepoId) return;
+    
+    const confirmed = await ask('Are you sure you want to remove this repository? This will delete the local cache but not affect the actual backup repository.', {
+      title: 'Remove Repository',
+      kind: 'warning'
+    });
+    
+    if (!confirmed) return;
+
+    try {
+      await invoke('remove_repository', { repoId: selectedRepoId });
+      
+      setRepositories(prev => prev.filter(r => r.id !== selectedRepoId));
+      repoConnections.delete(selectedRepoId);
+      setRepoConnections(new Map(repoConnections));
+      
+      snapshotCache.delete(selectedRepoId);
+      setSnapshotCache(new Map(snapshotCache));
+      
+      setSnapshots([]);
+      setSelectedRepoId(null);
+    } catch (err) {
+      console.error('Failed to remove repository:', err);
+      alert('Failed to remove repository. Please try again.');
+    }
+  }, [selectedRepoId, repoConnections, snapshotCache]);
 
   useEffect(() => {
     loadRepositoriesFromDisk();
@@ -460,13 +502,14 @@ function App() {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (showAddRepo) setShowAddRepo(false);
+        if (showSettings) setShowSettings(false);
         if (browsingSnapshot) setBrowsingSnapshot(null);
       }
     };
 
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
-  }, [showAddRepo, browsingSnapshot]);
+  }, [showAddRepo, showSettings, browsingSnapshot]);
 
   useEffect(() => {
     if (!selectedRepoId) return;
@@ -502,6 +545,9 @@ function App() {
             onLoadStats={loadSingleSnapshotStats}
             onRefresh={handleRefresh}
             isRefreshing={isRefreshing}
+            onSettings={handleSettings}
+            hasRepositories={repositories.length > 0}
+            onAddRepository={handleAddRepository}
           />
         }
       />
@@ -551,6 +597,17 @@ function App() {
           repo={connection.path}
           password={connection.password}
           onClose={handleCloseBrowser}
+        />
+      )}
+
+      {showSettings && selectedRepo && (
+        <SettingsModal
+          repository={selectedRepo}
+          onClose={handleCloseSettings}
+          onRemove={() => {
+            handleCloseSettings();
+            handleRemoveRepository();
+          }}
         />
       )}
     </>

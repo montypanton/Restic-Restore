@@ -18,6 +18,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
     onSelectRepository,
     onAddRepository
 }) => {
+    const containerStyle: React.CSSProperties = {
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%'
+    };
+
     const headerStyle: React.CSSProperties = {
         marginBottom: '20px'
     };
@@ -35,10 +41,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
         fontSize: '13px'
     };
 
+    const repoListStyle: React.CSSProperties = {
+        flex: 1,
+        overflowY: 'auto'
+    };
+
     const addButtonStyle: React.CSSProperties = {
         width: '100%',
         padding: '12px',
-        marginTop: '12px',
+        marginTop: 'auto',
         border: '1px solid var(--color-border)',
         borderRadius: '8px',
         backgroundColor: 'var(--color-bg-white)',
@@ -50,40 +61,44 @@ export const Sidebar: React.FC<SidebarProps> = ({
     };
 
     return (
-        <div>
-            <div style={headerStyle}>
-                <div style={titleStyle}>Repositories</div>
+        <div style={containerStyle}>
+            <div>
+                <div style={headerStyle}>
+                    <div style={titleStyle}>Repositories</div>
+                </div>
+
+                {repositories.length === 0 ? (
+                    <div style={emptyStateStyle}>
+                        <div style={{ marginBottom: '8px' }}>No repositories</div>
+                    </div>
+                ) : (
+                    <div style={repoListStyle}>
+                        {repositories.map((repo) => (
+                            <RepositoryCard
+                                key={repo.id}
+                                repository={repo}
+                                isSelected={selectedRepoId === repo.id}
+                                onClick={() => onSelectRepository(repo.id)}
+                            />
+                        ))}
+                    </div>
+                )}
             </div>
 
-            {repositories.length === 0 ? (
-                <div style={emptyStateStyle}>
-                    <div style={{ marginBottom: '8px' }}>No repositories</div>
-                </div>
-            ) : (
-                <div>
-                    {repositories.map((repo) => (
-                        <RepositoryCard
-                            key={repo.id}
-                            repository={repo}
-                            isSelected={selectedRepoId === repo.id}
-                            onClick={() => onSelectRepository(repo.id)}
-                        />
-                    ))}
-                </div>
+            {repositories.length > 0 && (
+                <button
+                    style={addButtonStyle}
+                    onClick={onAddRepository}
+                    onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = 'var(--color-bg-hover)';
+                    }}
+                    onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'var(--color-bg-white)';
+                    }}
+                >
+                    + Add Repository
+                </button>
             )}
-
-            <button
-                style={addButtonStyle}
-                onClick={onAddRepository}
-                onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = 'var(--color-bg-hover)';
-                }}
-                onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = 'var(--color-bg-white)';
-                }}
-            >
-                + Add Repository
-            </button>
         </div>
     );
 };

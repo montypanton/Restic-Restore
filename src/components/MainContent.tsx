@@ -12,6 +12,9 @@ interface MainContentProps {
     onLoadStats?: (snapshotId: string) => void;
     onRefresh?: () => void;
     isRefreshing?: boolean;
+    onSettings?: () => void;
+    hasRepositories?: boolean;
+    onAddRepository?: () => void;
 }
 
 /**
@@ -26,7 +29,10 @@ export const MainContent: React.FC<MainContentProps> = ({
     onBrowse,
     onLoadStats,
     onRefresh,
-    isRefreshing
+    isRefreshing,
+    onSettings,
+    hasRepositories = false,
+    onAddRepository
 }) => {
     const emptyStateStyle: React.CSSProperties = {
         display: 'flex',
@@ -36,14 +42,45 @@ export const MainContent: React.FC<MainContentProps> = ({
         height: '100%',
         color: 'var(--color-text-secondary)',
         fontSize: '14px',
-        padding: '40px'
+        padding: '40px',
+        gap: '16px'
+    };
+
+    const addButtonStyle: React.CSSProperties = {
+        padding: '12px 24px',
+        border: '1px solid var(--color-border)',
+        borderRadius: '8px',
+        backgroundColor: 'var(--color-bg-white)',
+        cursor: 'pointer',
+        fontSize: '14px',
+        fontWeight: 500,
+        color: 'var(--color-text-primary)',
+        transition: 'all 0.15s ease'
     };
 
     if (!repository) {
         return (
             <div style={emptyStateStyle}>
-                <div style={{ fontSize: '48px', marginBottom: '16px', opacity: 0.3 }}>📦</div>
-                <div>Select a repository to view snapshots</div>
+                <div>
+                    {hasRepositories 
+                        ? 'Select a repository to view snapshots'
+                        : 'Add a repository to view, browse and restore from'
+                    }
+                </div>
+                {!hasRepositories && onAddRepository && (
+                    <button
+                        style={addButtonStyle}
+                        onClick={onAddRepository}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = 'var(--color-bg-hover)';
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = 'var(--color-bg-white)';
+                        }}
+                    >
+                        + Add Repository
+                    </button>
+                )}
             </div>
         );
     }
@@ -62,6 +99,7 @@ export const MainContent: React.FC<MainContentProps> = ({
                 lastBackupTime={lastBackupTime}
                 onRefresh={onRefresh}
                 isRefreshing={isRefreshing}
+                onSettings={onSettings}
             />
             <TimelineView
                 snapshots={snapshots}
