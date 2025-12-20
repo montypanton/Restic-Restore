@@ -14,7 +14,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: 'macos-latest'
+          - platform: 'macos-13'
             args: '--target universal-apple-darwin'
 
     runs-on: ${{ matrix.platform }}
@@ -33,6 +33,11 @@ jobs:
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
       - name: Install frontend dependencies
         run: npm install
 
@@ -49,4 +54,5 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+          tauriScript: npm run tauri
 

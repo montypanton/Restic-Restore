@@ -79,8 +79,7 @@ fn migrate_config_if_needed(new_config_dir: &PathBuf) -> Result<(), String> {
     Ok(())
 }
 
-/// Returns the application's config directory.
-/// Location: ~/Library/Application Support/app.restic-restore/
+/// Returns ~/Library/Application Support/app.restic-restore/
 pub fn get_config_dir() -> Result<PathBuf, String> {
     let data_dir = dirs::data_local_dir()
         .ok_or_else(|| "Could not find Application Support directory".to_string())?;
@@ -97,13 +96,11 @@ pub fn get_config_dir() -> Result<PathBuf, String> {
     Ok(config_dir)
 }
 
-/// Returns the path to the main config file.
 pub fn get_config_file_path() -> Result<PathBuf, String> {
     let config_dir = get_config_dir()?;
     Ok(config_dir.join("config.json"))
 }
 
-/// Saves the application configuration.
 pub fn save_config(config: &AppConfig) -> Result<(), String> {
     let config_path = get_config_file_path()?;
     
@@ -116,7 +113,7 @@ pub fn save_config(config: &AppConfig) -> Result<(), String> {
     Ok(())
 }
 
-/// Loads the application configuration. Returns empty config if not found.
+/// Returns empty config if file not found.
 pub fn load_config() -> Result<AppConfig, String> {
     let config_path = get_config_file_path()?;
     
@@ -133,13 +130,11 @@ pub fn load_config() -> Result<AppConfig, String> {
     Ok(config)
 }
 
-/// Returns the stats cache path for a repository.
 pub fn get_stats_cache_path(repo_id: &str) -> Result<PathBuf, String> {
     let config_dir = get_config_dir()?;
     Ok(config_dir.join(format!("stats_cache_{}.json", repo_id)))
 }
 
-/// Saves snapshot statistics cache for a repository.
 pub fn save_stats_cache(repo_id: &str, cache: &StatsCache) -> Result<(), String> {
     let cache_path = get_stats_cache_path(repo_id)?;
     
@@ -152,7 +147,7 @@ pub fn save_stats_cache(repo_id: &str, cache: &StatsCache) -> Result<(), String>
     Ok(())
 }
 
-/// Loads snapshot statistics cache for a repository. Returns empty cache if not found.
+/// Returns empty cache if file not found.
 pub fn load_stats_cache(repo_id: &str) -> Result<StatsCache, String> {
     let cache_path = get_stats_cache_path(repo_id)?;
     
@@ -169,7 +164,6 @@ pub fn load_stats_cache(repo_id: &str) -> Result<StatsCache, String> {
     Ok(cache)
 }
 
-/// Deletes a repository's stats cache file.
 pub fn delete_stats_cache(repo_id: &str) -> Result<(), String> {
     let cache_path = get_stats_cache_path(repo_id)?;
     
