@@ -141,7 +141,7 @@ function App() {
 
     const statsMap = new Map<string, { size: string; fileCount: number }>();
 
-    results.forEach((result, index) => {
+    results.forEach((result, _index) => {
       if (result.status === 'fulfilled' && result.value) {
         const stat = result.value;
         statsMap.set(stat.snapshotId, {

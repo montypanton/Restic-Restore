@@ -113,7 +113,7 @@ export function FileBrowser({ snapshot, repo, password, onClose }: FileBrowserPr
             if (file.type === 'dir') {
                 const dirPath = file.path.endsWith('/') ? file.path : file.path + '/';
                 const keysToRemove: string[] = [];
-                newSelected.forEach((item, path) => {
+                newSelected.forEach((_item, path) => {
                     if (path !== file.path && path.startsWith(dirPath)) {
                         keysToRemove.push(path);
                     }
