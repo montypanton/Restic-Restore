@@ -1,15 +1,30 @@
 use crate::models::{Snapshot, FileNode};
 use crate::storage::{AppConfig, SavedRepository, StatsCache, save_config, load_config, save_stats_cache, load_stats_cache, delete_stats_cache};
 use std::process::Command;
+use std::path::Path;
 use tauri::command;
 use serde_json::Value;
 
-/**
- * Executes a restic command with the given repository and password.
- * Password is passed via RESTIC_PASSWORD environment variable for security.
- */
+/// Finds the restic binary in common installation locations.
+fn find_restic_binary() -> String {
+    let locations = [
+        "/opt/homebrew/bin/restic",  // Apple Silicon Homebrew
+        "/usr/local/bin/restic",      // Intel Homebrew
+        "/usr/bin/restic",            // System install
+        "restic",                     // Fallback to PATH
+    ];
+    
+    for location in &locations {
+        if location == &"restic" || Path::new(location).exists() {
+            return location.to_string();
+        }
+    }
+    
+    "restic".to_string()
+}
+
 fn run_restic(repo: &str, password: &str, args: &[&str]) -> Result<String, String> {
-    let output = Command::new("restic")
+    let output = Command::new(find_restic_binary())
         .arg("-r")
         .arg(repo)
         .args(args)
@@ -25,13 +40,9 @@ fn run_restic(repo: &str, password: &str, args: &[&str]) -> Result<String, Strin
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-/**
- * Executes a restic restore command with lenient error handling.
- * Distinguishes between fatal errors and non-fatal warnings (e.g., permission issues).
- * Restic often returns exit code 1 for minor issues that don't prevent successful restore.
- */
+/// Executes restic restore with lenient error handling for non-fatal warnings.
 fn run_restic_restore(repo: &str, password: &str, args: &[&str]) -> Result<String, String> {
-    let output = Command::new("restic")
+    let output = Command::new(find_restic_binary())
         .arg("-r")
         .arg(repo)
         .args(args)
