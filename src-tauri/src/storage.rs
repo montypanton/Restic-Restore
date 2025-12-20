@@ -27,15 +27,67 @@ pub struct StatsCache {
     pub stats: HashMap<String, SnapshotStats>,
 }
 
-/**
- * Returns the path to the application's config directory (Documents/restic-restore-data/).
- * Creates the directory if it doesn't exist.
- */
-pub fn get_config_dir() -> Result<PathBuf, String> {
-    let documents_dir = dirs::document_dir()
-        .ok_or_else(|| "Could not find Documents directory".to_string())?;
+fn get_old_config_dir() -> Option<PathBuf> {
+    dirs::document_dir().map(|dir| dir.join("restic-restore-data"))
+}
+
+fn copy_file_if_exists(source: &PathBuf, dest: &PathBuf) -> Result<(), String> {
+    if source.exists() {
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create directory: {}", e))?;
+        }
+        fs::copy(source, dest)
+            .map_err(|e| format!("Failed to copy file: {}", e))?;
+    }
+    Ok(())
+}
+
+/// Migrates data from old Documents location to new Library location.
+/// Only runs if new location doesn't exist and old location has data.
+fn migrate_config_if_needed(new_config_dir: &PathBuf) -> Result<(), String> {
+    if new_config_dir.exists() {
+        return Ok(());
+    }
     
-    let config_dir = documents_dir.join("restic-restore-data");
+    let old_dir = match get_old_config_dir() {
+        Some(dir) if dir.exists() => dir,
+        _ => return Ok(()),
+    };
+    
+    fs::create_dir_all(new_config_dir)
+        .map_err(|e| format!("Failed to create config directory: {}", e))?;
+    
+    let old_config = old_dir.join("config.json");
+    let new_config = new_config_dir.join("config.json");
+    copy_file_if_exists(&old_config, &new_config)?;
+    
+    if let Ok(entries) = fs::read_dir(&old_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(filename) = path.file_name() {
+                if let Some(name) = filename.to_str() {
+                    if name.starts_with("stats_cache_") && name.ends_with(".json") {
+                        let dest = new_config_dir.join(filename);
+                        copy_file_if_exists(&path, &dest)?;
+                    }
+                }
+            }
+        }
+    }
+    
+    Ok(())
+}
+
+/// Returns the application's config directory.
+/// Location: ~/Library/Application Support/app.restic-restore/
+pub fn get_config_dir() -> Result<PathBuf, String> {
+    let data_dir = dirs::data_local_dir()
+        .ok_or_else(|| "Could not find Application Support directory".to_string())?;
+    
+    let config_dir = data_dir.join("app.restic-restore");
+    
+    migrate_config_if_needed(&config_dir)?;
     
     if !config_dir.exists() {
         fs::create_dir_all(&config_dir)
@@ -45,13 +97,13 @@ pub fn get_config_dir() -> Result<PathBuf, String> {
     Ok(config_dir)
 }
 
-/// Returns the path to the main config file (Documents/restic-restore-data/config.json)
+/// Returns the path to the main config file.
 pub fn get_config_file_path() -> Result<PathBuf, String> {
     let config_dir = get_config_dir()?;
     Ok(config_dir.join("config.json"))
 }
 
-/// Saves the application configuration to disk as JSON
+/// Saves the application configuration.
 pub fn save_config(config: &AppConfig) -> Result<(), String> {
     let config_path = get_config_file_path()?;
     
@@ -64,7 +116,7 @@ pub fn save_config(config: &AppConfig) -> Result<(), String> {
     Ok(())
 }
 
-/// Loads the application configuration from disk. Returns empty config if file doesn't exist.
+/// Loads the application configuration. Returns empty config if not found.
 pub fn load_config() -> Result<AppConfig, String> {
     let config_path = get_config_file_path()?;
     
@@ -81,13 +133,13 @@ pub fn load_config() -> Result<AppConfig, String> {
     Ok(config)
 }
 
-/// Returns the path to the stats cache file for a specific repository
+/// Returns the stats cache path for a repository.
 pub fn get_stats_cache_path(repo_id: &str) -> Result<PathBuf, String> {
     let config_dir = get_config_dir()?;
     Ok(config_dir.join(format!("stats_cache_{}.json", repo_id)))
 }
 
-/// Saves snapshot statistics cache for a repository to disk
+/// Saves snapshot statistics cache for a repository.
 pub fn save_stats_cache(repo_id: &str, cache: &StatsCache) -> Result<(), String> {
     let cache_path = get_stats_cache_path(repo_id)?;
     
@@ -100,7 +152,7 @@ pub fn save_stats_cache(repo_id: &str, cache: &StatsCache) -> Result<(), String>
     Ok(())
 }
 
-/// Loads snapshot statistics cache for a repository. Returns empty cache if file doesn't exist.
+/// Loads snapshot statistics cache for a repository. Returns empty cache if not found.
 pub fn load_stats_cache(repo_id: &str) -> Result<StatsCache, String> {
     let cache_path = get_stats_cache_path(repo_id)?;
     
@@ -117,7 +169,7 @@ pub fn load_stats_cache(repo_id: &str) -> Result<StatsCache, String> {
     Ok(cache)
 }
 
-/// Deletes a repository's stats cache file from disk
+/// Deletes a repository's stats cache file.
 pub fn delete_stats_cache(repo_id: &str) -> Result<(), String> {
     let cache_path = get_stats_cache_path(repo_id)?;
     
