@@ -46,20 +46,17 @@ Files are restored to a timestamped subdirectory within your chosen location to 
 
 ## Configuration
 
-Configuration and cache files are stored in platform-appropriate locations:
+Configuration and cache files are stored in platform specific locations:
 - **macOS**: `~/Library/Application Support/app.restic-restore/`
-- **Linux**: `~/.local/share/app.restic-restore/`
 - **Windows**: `%APPDATA%\app.restic-restore\`
 
 This directory contains:
 - `config.json` - Repository configurations
 - `stats_cache_*.json` - Cached snapshot statistics
 
-**Note**: If you previously used v0.1.x, data is automatically migrated from `~/Documents/restic-restore-data/` on first launch.
-
 ## Security Note
 
-Repository passwords are currently stored in plain text in the configuration file. This is a temporary implementation. Future versions will migrate to OS-provided secure credential storage (macOS Keychain, Windows Credential Manager, Linux Secret Service).
+Repository passwords are currently stored in plain text in the configuration file. This is a temporary implementation. Future versions will migrate to OS secure credential storage (macOS Keychain, Windows Credential Manager).
 
 ## Development
 
