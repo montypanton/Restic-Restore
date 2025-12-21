@@ -17,17 +17,17 @@ fn find_restic_binary() -> String {
 
     #[cfg(target_os = "windows")]
     let platform_locations = {
-        let mut locations = vec![
-            "C:\\Program Files\\Restic\\restic.exe".to_string(),
-            "C:\\Program Files (x86)\\Restic\\restic.exe".to_string(),
-        ];
+        let mut locations = vec![];
 
         if let Some(home_dir) = dirs::home_dir() {
-            let scoop_path = home_dir.join("scoop\\shims\\restic.exe");
-            if let Some(path_str) = scoop_path.to_str() {
+            let scoop_shim = home_dir.join("scoop\\shims\\restic.exe");
+            if let Some(path_str) = scoop_shim.to_str() {
                 locations.push(path_str.to_string());
             }
         }
+
+        locations.push("C:\\Program Files\\Restic\\restic.exe".to_string());
+        locations.push("C:\\Program Files (x86)\\Restic\\restic.exe".to_string());
 
         locations
     };
@@ -43,6 +43,20 @@ fn find_restic_binary() -> String {
 }
 
 fn run_restic(repo: &str, password: &str, args: &[&str]) -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    let output = {
+        let restic_path = find_restic_binary();
+        let mut cmd_args = vec!["/c", &restic_path, "-r", repo];
+        cmd_args.extend(args.iter().map(|s| *s));
+
+        Command::new("cmd")
+            .args(&cmd_args)
+            .env("RESTIC_PASSWORD", password)
+            .output()
+            .map_err(|e| format!("Failed to execute restic: {}", e))?
+    };
+
+    #[cfg(not(target_os = "windows"))]
     let output = Command::new(find_restic_binary())
         .arg("-r")
         .arg(repo)
@@ -61,6 +75,20 @@ fn run_restic(repo: &str, password: &str, args: &[&str]) -> Result<String, Strin
 
 /// Executes restic restore with lenient error handling for non-fatal warnings.
 fn run_restic_restore(repo: &str, password: &str, args: &[&str]) -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    let output = {
+        let restic_path = find_restic_binary();
+        let mut cmd_args = vec!["/c", &restic_path, "-r", repo];
+        cmd_args.extend(args.iter().map(|s| *s));
+
+        Command::new("cmd")
+            .args(&cmd_args)
+            .env("RESTIC_PASSWORD", password)
+            .output()
+            .map_err(|e| format!("Failed to execute restic: {}", e))?
+    };
+
+    #[cfg(not(target_os = "windows"))]
     let output = Command::new(find_restic_binary())
         .arg("-r")
         .arg(repo)
@@ -77,11 +105,11 @@ fn run_restic_restore(repo: &str, password: &str, args: &[&str]) -> Result<Strin
             || stderr.contains("wrong password")
             || stderr.contains("unable to open repository")
             || stderr.contains("snapshot") && stderr.contains("not found");
-        
+
         if is_fatal {
             return Err(format!("Restore failed: {}", stderr));
         }
-        
+
         return Ok(format!("Restored with warnings:\n{}", stderr));
     }
 
@@ -130,9 +158,9 @@ pub async fn restore_snapshot(repo: String, password: String, snapshot_id: Strin
 /// Restores selected files/directories from a snapshot to the target directory
 #[command]
 pub async fn restore_selective(
-    repo: String, 
-    password: String, 
-    snapshot_id: String, 
+    repo: String,
+    password: String,
+    snapshot_id: String,
     target: String,
     include_paths: Vec<String>
 ) -> Result<String, String> {
