@@ -4,22 +4,41 @@ use std::process::Command;
 use std::path::Path;
 use tauri::command;
 use serde_json::Value;
+use dirs;
 
 /// Finds the restic binary in common installation locations.
 fn find_restic_binary() -> String {
-    let locations = [
-        "/opt/homebrew/bin/restic",  // Apple Silicon Homebrew
-        "/usr/local/bin/restic",      // Intel Homebrew
-        "/usr/bin/restic",            // System install
-        "restic",                     // Fallback to PATH
+    #[cfg(target_os = "macos")]
+    let platform_locations: Vec<String> = vec![
+        "/opt/homebrew/bin/restic".to_string(),
+        "/usr/local/bin/restic".to_string(),
+        "/usr/bin/restic".to_string(),
     ];
-    
-    for location in &locations {
-        if location == &"restic" || Path::new(location).exists() {
+
+    #[cfg(target_os = "windows")]
+    let platform_locations = {
+        let mut locations = vec![
+            "C:\\Program Files\\Restic\\restic.exe".to_string(),
+            "C:\\Program Files (x86)\\Restic\\restic.exe".to_string(),
+        ];
+
+        if let Some(home_dir) = dirs::home_dir() {
+            let scoop_path = home_dir.join("scoop\\shims\\restic.exe");
+            if let Some(path_str) = scoop_path.to_str() {
+                locations.push(path_str.to_string());
+            }
+        }
+
+        locations
+    };
+
+    for location in &platform_locations {
+        if Path::new(location).exists() {
             return location.to_string();
         }
     }
-    
+
+    // Fallback to PATH lookup
     "restic".to_string()
 }
 
