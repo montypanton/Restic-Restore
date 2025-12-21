@@ -6,6 +6,9 @@ use tauri::command;
 use serde_json::Value;
 use dirs;
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 /// Finds the restic binary in common installation locations.
 fn find_restic_binary() -> String {
     #[cfg(target_os = "macos")]
@@ -45,13 +48,12 @@ fn find_restic_binary() -> String {
 fn run_restic(repo: &str, password: &str, args: &[&str]) -> Result<String, String> {
     #[cfg(target_os = "windows")]
     let output = {
-        let restic_path = find_restic_binary();
-        let mut cmd_args = vec!["/c", &restic_path, "-r", repo];
-        cmd_args.extend(args.iter().map(|s| *s));
-
-        Command::new("cmd")
-            .args(&cmd_args)
+        Command::new(find_restic_binary())
+            .arg("-r")
+            .arg(repo)
+            .args(args)
             .env("RESTIC_PASSWORD", password)
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
             .output()
             .map_err(|e| format!("Failed to execute restic: {}", e))?
     };
@@ -77,13 +79,12 @@ fn run_restic(repo: &str, password: &str, args: &[&str]) -> Result<String, Strin
 fn run_restic_restore(repo: &str, password: &str, args: &[&str]) -> Result<String, String> {
     #[cfg(target_os = "windows")]
     let output = {
-        let restic_path = find_restic_binary();
-        let mut cmd_args = vec!["/c", &restic_path, "-r", repo];
-        cmd_args.extend(args.iter().map(|s| *s));
-
-        Command::new("cmd")
-            .args(&cmd_args)
+        Command::new(find_restic_binary())
+            .arg("-r")
+            .arg(repo)
+            .args(args)
             .env("RESTIC_PASSWORD", password)
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
             .output()
             .map_err(|e| format!("Failed to execute restic: {}", e))?
     };
