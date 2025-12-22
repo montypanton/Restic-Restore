@@ -14,6 +14,10 @@ interface FileTree {
     [path: string]: FileNode[];
 }
 
+interface FileNodeWithNormalized extends FileNode {
+    normalizedPath: string;
+}
+
 interface SelectedItem {
     file: FileNode;
     restorePath: string;
@@ -57,13 +61,18 @@ export function FileBrowser({ snapshot, repo, password, onClose }: FileBrowserPr
         }
     };
 
+    // Helper function to normalize paths to forward slashes for cross platform paths
+    const normalizePath = (path: string): string => {
+        return path.replace(/\\/g, '/');
+    };
+
     const fileTree = useMemo<FileTree>(() => {
         const tree: FileTree = {};
-        
+
         allFiles.forEach(file => {
-            const filePath = file.path || '';
-            const parts = filePath.split('/').filter(p => p);
-            
+            const filePath = normalizePath(file.path || '');
+            const parts = filePath.split(/[/\\]/).filter(p => p);
+
             let parentPath: string;
             if (parts.length === 0) {
                 return;
@@ -72,13 +81,18 @@ export function FileBrowser({ snapshot, repo, password, onClose }: FileBrowserPr
             } else {
                 parentPath = '/' + parts.slice(0, -1).join('/');
             }
-            
+
             if (!tree[parentPath]) {
                 tree[parentPath] = [];
             }
-            tree[parentPath].push(file);
+
+            const fileWithNormalized: FileNodeWithNormalized = {
+                ...file,
+                normalizedPath: filePath
+            };
+            tree[parentPath].push(fileWithNormalized as FileNode);
         });
-        
+
         return tree;
     }, [allFiles]);
 
@@ -88,65 +102,67 @@ export function FileBrowser({ snapshot, repo, password, onClose }: FileBrowserPr
 
     const handleUp = () => {
         if (currentPath === '/') return;
-        const parent = currentPath.split('/').slice(0, -1).join('/') || '/';
+        const parent = normalizePath(currentPath).split('/').slice(0, -1).join('/') || '/';
         setCurrentPath(parent);
     };
 
     const handleItemClick = (file: FileNode) => {
         if (file.type === 'dir') {
             if (file.path) {
-                setCurrentPath(file.path);
+                setCurrentPath(normalizePath(file.path));
             }
         }
     };
 
     const handleCheckboxChange = (file: FileNode, checked: boolean) => {
         const newSelected = new Map(selectedItems);
-        
+        const normalizedFilePath = normalizePath(file.path);
+
         if (checked) {
-            newSelected.set(file.path, {
+            newSelected.set(normalizedFilePath, {
                 file,
                 restorePath: file.path
             });
-            
+
             // Remove redundant child selections since parent directory includes them
             if (file.type === 'dir') {
-                const dirPath = file.path.endsWith('/') ? file.path : file.path + '/';
+                const dirPath = normalizedFilePath.endsWith('/') ? normalizedFilePath : normalizedFilePath + '/';
                 const keysToRemove: string[] = [];
                 newSelected.forEach((_item, path) => {
-                    if (path !== file.path && path.startsWith(dirPath)) {
+                    if (path !== normalizedFilePath && path.startsWith(dirPath)) {
                         keysToRemove.push(path);
                     }
                 });
                 keysToRemove.forEach(key => newSelected.delete(key));
             }
         } else {
-            newSelected.delete(file.path);
-            
+            newSelected.delete(normalizedFilePath);
+
             // When unchecking a child of a selected directory, replace parent with individual siblings
             const parentSelected = Array.from(newSelected.keys()).find(selectedPath => {
                 const selectedItem = newSelected.get(selectedPath);
-                if (selectedItem?.file.type === 'dir' && selectedPath !== file.path) {
+                if (selectedItem?.file.type === 'dir' && selectedPath !== normalizedFilePath) {
                     const dirPath = selectedPath.endsWith('/') ? selectedPath : selectedPath + '/';
-                    return file.path.startsWith(dirPath);
+                    return normalizedFilePath.startsWith(dirPath);
                 }
                 return false;
             });
-            
+
             if (parentSelected) {
                 newSelected.delete(parentSelected);
-                
+
                 const parentDirPath = parentSelected.endsWith('/') ? parentSelected : parentSelected + '/';
                 allFiles.forEach(childFile => {
-                    if (childFile.path.startsWith(parentDirPath) && 
-                        childFile.path !== parentSelected &&
-                        childFile.path !== file.path) {
-                        const relativePath = childFile.path.substring(parentDirPath.length);
-                        const isDirectChild = !relativePath.includes('/') || 
+                    const normalizedChildPath = normalizePath(childFile.path);
+                    if (normalizedChildPath.startsWith(parentDirPath) &&
+                        normalizedChildPath !== parentSelected &&
+                        normalizedChildPath !== normalizedFilePath) {
+                        const relativePath = normalizedChildPath.substring(parentDirPath.length);
+                        const isDirectChild = !relativePath.includes('/') ||
                                             (relativePath.endsWith('/') && relativePath.split('/').filter(p => p).length === 1);
-                        
+
                         if (isDirectChild) {
-                            newSelected.set(childFile.path, {
+                            newSelected.set(normalizedChildPath, {
                                 file: childFile,
                                 restorePath: childFile.path
                             });
@@ -155,13 +171,13 @@ export function FileBrowser({ snapshot, repo, password, onClose }: FileBrowserPr
                 });
             }
         }
-        
+
         setSelectedItems(newSelected);
     };
 
     const handleRemoveFromSelection = (filePath: string) => {
         const newSelected = new Map(selectedItems);
-        newSelected.delete(filePath);
+        newSelected.delete(normalizePath(filePath));
         setSelectedItems(newSelected);
     };
 
@@ -245,7 +261,10 @@ export function FileBrowser({ snapshot, repo, password, onClose }: FileBrowserPr
         setPendingRestore(null);
     };
 
-    const pathSegments = currentPath.split('/').filter(s => s);
+    const pathSegments = useMemo(() =>
+        normalizePath(currentPath).split('/').filter(s => s),
+        [currentPath]
+    );
 
     const modalStyle: React.CSSProperties = {
         position: 'fixed',
@@ -601,6 +620,7 @@ export function FileBrowser({ snapshot, repo, password, onClose }: FileBrowserPr
                                         const newPath = '/' + pathSegments.slice(0, index + 1).join('/');
                                         setCurrentPath(newPath);
                                     }}
+                                    key={index}
                                     style={{
                                         background: 'none',
                                         border: 'none',
@@ -669,17 +689,18 @@ export function FileBrowser({ snapshot, repo, password, onClose }: FileBrowserPr
                         ) : (
                             <>
                                 {files.map((file, idx, array) => {
-                                    const isDirectlySelected = selectedItems.has(file.path);
-                                    
+                                    const normalizedFilePath = (file as FileNodeWithNormalized).normalizedPath || normalizePath(file.path);
+                                    const isDirectlySelected = selectedItems.has(normalizedFilePath);
+
                                     const hasParentSelected = Array.from(selectedItems.keys()).some(selectedPath => {
                                         const selectedItem = selectedItems.get(selectedPath);
-                                        if (selectedItem?.file.type === 'dir' && selectedPath !== file.path) {
+                                        if (selectedItem?.file.type === 'dir' && selectedPath !== normalizedFilePath) {
                                             const dirPath = selectedPath.endsWith('/') ? selectedPath : selectedPath + '/';
-                                            return file.path.startsWith(dirPath);
+                                            return normalizedFilePath.startsWith(dirPath);
                                         }
                                         return false;
                                     });
-                                    
+
                                     const isSelected = isDirectlySelected || hasParentSelected;
                                     
                                     return (
