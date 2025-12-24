@@ -6,7 +6,7 @@ interface BrowsingSnapshot {
   files: FileNode[];
 }
 
-interface UseModalStateReturn {
+interface UseWindowStateReturn {
   showAddRepo: boolean;
   showSettings: boolean;
   browsingSnapshot: BrowsingSnapshot | null;
@@ -18,7 +18,7 @@ interface UseModalStateReturn {
   closeFileBrowser: () => void;
 }
 
-export function useModalState(): UseModalStateReturn {
+export function useWindowState(): UseWindowStateReturn {
   const [showAddRepo, setShowAddRepo] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [browsingSnapshot, setBrowsingSnapshot] = useState<BrowsingSnapshot | null>(null);

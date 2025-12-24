@@ -1,18 +1,18 @@
 import { useState } from 'react';
 import { Repository } from '../types';
-import styles from './SettingsModal.module.css';
+import styles from './SettingsWindow.module.css';
 
-interface SettingsModalProps {
+interface SettingsWindowProps {
     repository: Repository;
     onClose: () => void;
     onRemove: () => void;
 }
 
-export function SettingsModal({
+export function SettingsWindow({
     repository,
     onClose,
     onRemove
-}: SettingsModalProps) {
+}: SettingsWindowProps) {
     const [showPassword, setShowPassword] = useState(false);
 
     return (

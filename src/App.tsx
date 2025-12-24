@@ -4,13 +4,13 @@ import { Sidebar } from './components/Sidebar';
 import { MainContent } from './components/MainContent';
 import { ConnectionForm } from './components/ConnectionForm';
 import { FileBrowser } from './components/FileBrowser';
-import { SettingsModal } from './components/SettingsModal';
+import { SettingsWindow } from './components/SettingsWindow';
 import { SnapshotWithStats } from './types';
 import { useRepositories } from './hooks/useRepositories';
 import { useSnapshots } from './hooks/useSnapshots';
 import { useSnapshotStats } from './hooks/useSnapshotStats';
 import { useRepositoryStats } from './hooks/useRepositoryStats';
-import { useModalState } from './hooks/useModalState';
+import { useWindowState } from './hooks/useWindowState';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { formatBytes } from './utils/formatters';
 import { TIMING } from './config/constants';
@@ -53,7 +53,7 @@ function App() {
     closeSettings,
     setBrowsingSnapshot,
     closeFileBrowser,
-  } = useModalState();
+  } = useWindowState();
 
   useEffect(() => {
     if (selectedRepoId && selectedConnection) {
@@ -221,7 +221,7 @@ function App() {
       )}
 
       {showSettings && selectedRepo && (
-        <SettingsModal
+        <SettingsWindow
           repository={selectedRepo}
           onClose={closeSettings}
           onRemove={() => {
