@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf, Component};
 use tauri::command;
 use serde_json::Value;
 use dirs;
+use tracing::{info, debug, warn, error, instrument};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -212,7 +213,10 @@ fn run_restic_command(
     args: &[&str],
     error_mode: ErrorHandling,
 ) -> Result<String> {
-    let mut cmd = Command::new(find_restic_binary());
+    let restic_bin = find_restic_binary();
+    debug!("Executing restic command: {} -r {} {}", restic_bin, repo, args.join(" "));
+
+    let mut cmd = Command::new(&restic_bin);
     cmd.arg("-r")
        .arg(repo)
        .args(args)
@@ -226,7 +230,10 @@ fn run_restic_command(
 
     let output = cmd
         .output()
-        .map_err(|e| AppError::ResticExecution(e.to_string()))?;
+        .map_err(|e| {
+            error!("Failed to execute restic binary: {}", e);
+            AppError::ResticExecution(e.to_string())
+        })?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -234,6 +241,7 @@ fn run_restic_command(
     if !output.status.success() {
         match error_mode {
             ErrorHandling::Strict => {
+                error!("Restic command failed: {}", stderr);
                 Err(AppError::ResticError(stderr))
             }
             ErrorHandling::Lenient => {
@@ -243,13 +251,16 @@ fn run_restic_command(
                     || (stderr.contains("snapshot") && stderr.contains("not found"));
 
                 if is_fatal {
+                    error!("Restore failed with fatal error: {}", stderr);
                     Err(AppError::RestoreFailed(stderr))
                 } else {
+                    warn!("Restore completed with warnings: {}", stderr);
                     Ok(format!("Restored with warnings:\n{}", stderr))
                 }
             }
         }
     } else {
+        debug!("Restic command completed successfully");
         Ok(stdout)
     }
 }
@@ -264,22 +275,28 @@ fn run_restic_restore(repo: &str, password: &str, args: &[&str]) -> Result<Strin
 }
 
 #[command]
+#[instrument(skip(password))]
 pub async fn connect_repository(repo: String, password: String) -> std::result::Result<String, String> {
+    info!("Connecting to repository");
     validate_repository_path(&repo)?;
     validate_password(&password)?;
 
     run_restic(&repo, &password, &["snapshots", "--latest", "1", "--json"])?;
+    info!("Successfully connected to repository");
     Ok("Connected successfully".to_string())
 }
 
 #[command]
+#[instrument(skip(password))]
 pub async fn list_snapshots(repo: String, password: String) -> std::result::Result<Vec<Snapshot>, String> {
+    info!("Listing snapshots");
     validate_repository_path(&repo)?;
     validate_password(&password)?;
 
     let output = run_restic(&repo, &password, &["snapshots", "--json"])?;
     let snapshots: Vec<Snapshot> = serde_json::from_str(&output)
         .map_err(|e| AppError::SnapshotJsonParse(e.to_string()))?;
+    info!("Found {} snapshots", snapshots.len());
     Ok(snapshots)
 }
 
@@ -303,17 +320,21 @@ pub async fn get_snapshot_details(repo: String, password: String, snapshot_id: S
 }
 
 #[command]
+#[instrument(skip(password))]
 pub async fn restore_snapshot(repo: String, password: String, snapshot_id: String, target: String) -> std::result::Result<String, String> {
+    info!("Starting full snapshot restore to {}", target);
     validate_repository_path(&repo)?;
     validate_password(&password)?;
     validate_snapshot_id(&snapshot_id)?;
     let validated_target = validate_target_path(&target)?;
 
     run_restic_restore(&repo, &password, &["restore", &snapshot_id, "--target", validated_target.to_str().unwrap()])?;
+    info!("Restore completed successfully");
     Ok("Restore completed".to_string())
 }
 
 #[command]
+#[instrument(skip(password), fields(num_paths = include_paths.len()))]
 pub async fn restore_selective(
     repo: String,
     password: String,
@@ -321,6 +342,7 @@ pub async fn restore_selective(
     target: String,
     include_paths: Vec<String>
 ) -> std::result::Result<String, String> {
+    info!("Starting selective restore of {} paths to {}", include_paths.len(), target);
     validate_repository_path(&repo)?;
     validate_password(&password)?;
     validate_snapshot_id(&snapshot_id)?;
@@ -345,6 +367,7 @@ pub async fn restore_selective(
     args.extend(include_args);
 
     run_restic_restore(&repo, &password, &args)?;
+    info!("Selective restore completed successfully");
 
     Ok(format!("Restored {} item(s) successfully", include_paths.len()))
 }
@@ -407,7 +430,9 @@ pub async fn get_repository_stats(repo: String, password: String) -> std::result
 }
 
 #[command]
+#[instrument(skip(repositories))]
 pub async fn save_repositories(repositories: Vec<SavedRepository>) -> std::result::Result<(), String> {
+    info!("Saving {} repositories", repositories.len());
     for repo in &repositories {
         validate_repo_id(&repo.id)?;
         validate_repository_path(&repo.path)?;
@@ -424,12 +449,16 @@ pub async fn save_repositories(repositories: Vec<SavedRepository>) -> std::resul
 
     let config = AppConfig { repositories };
     save_config(&config).map_err(|e| AppError::Storage(e))?;
+    info!("Repositories saved successfully");
     Ok(())
 }
 
 #[command]
+#[instrument]
 pub async fn load_repositories() -> std::result::Result<Vec<SavedRepository>, String> {
+    info!("Loading saved repositories");
     let config = load_config().map_err(|e| AppError::Storage(e))?;
+    info!("Loaded {} repositories", config.repositories.len());
     Ok(config.repositories)
 }
 
@@ -455,12 +484,15 @@ pub async fn load_snapshot_stats_cache(repo_id: String) -> std::result::Result<S
 }
 
 #[command]
+#[instrument]
 pub async fn remove_repository(repo_id: String) -> std::result::Result<(), String> {
+    info!("Removing repository: {}", repo_id);
     validate_repo_id(&repo_id)?;
 
     let mut config = load_config().map_err(|e| AppError::Storage(e))?;
     config.repositories.retain(|r| r.id != repo_id);
     save_config(&config).map_err(|e| AppError::Storage(e))?;
     delete_stats_cache(&repo_id).map_err(|e| AppError::Storage(e))?;
+    info!("Repository removed successfully");
     Ok(())
 }
