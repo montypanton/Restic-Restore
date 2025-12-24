@@ -1,3 +1,4 @@
+use crate::error::{AppError, Result};
 use crate::models::{Snapshot, FileNode};
 use crate::storage::{AppConfig, SavedRepository, StatsCache, save_config, load_config, save_stats_cache, load_stats_cache, delete_stats_cache};
 use std::process::Command;
@@ -9,13 +10,13 @@ use dirs;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
-fn validate_repository_path(repo: &str) -> Result<(), String> {
+fn validate_repository_path(repo: &str) -> Result<()> {
     if repo.trim().is_empty() {
-        return Err("Repository path cannot be empty".to_string());
+        return Err(AppError::EmptyRepositoryPath);
     }
 
     if repo.contains('\0') {
-        return Err("Repository path contains invalid characters".to_string());
+        return Err(AppError::InvalidRepositoryPath);
     }
 
     if repo.contains(':') && !repo.starts_with("C:") && !repo.starts_with("c:") {
@@ -23,12 +24,11 @@ fn validate_repository_path(repo: &str) -> Result<(), String> {
         if !valid_protocols.iter().any(|p| repo.starts_with(p)) {
             if cfg!(windows) && repo.len() >= 2 && repo.chars().nth(1) == Some(':') {
             } else {
-                return Err(format!("Unsupported repository protocol. Expected one of: {}",
-                    valid_protocols.join(", ")));
+                return Err(AppError::UnsupportedProtocol(valid_protocols.join(", ")));
             }
         } else {
             if repo.len() < 5 {
-                return Err("Remote repository path too short".to_string());
+                return Err(AppError::RemotePathTooShort);
             }
             return Ok(());
         }
@@ -38,7 +38,7 @@ fn validate_repository_path(repo: &str) -> Result<(), String> {
 
     for component in path.components() {
         if matches!(component, Component::ParentDir) {
-            return Err("Repository path cannot contain '..' components".to_string());
+            return Err(AppError::PathTraversal);
         }
     }
 
@@ -46,55 +46,55 @@ fn validate_repository_path(repo: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_snapshot_id(snapshot_id: &str) -> Result<(), String> {
+fn validate_snapshot_id(snapshot_id: &str) -> Result<()> {
     if snapshot_id.trim().is_empty() {
-        return Err("Snapshot ID cannot be empty".to_string());
+        return Err(AppError::EmptySnapshotId);
     }
 
     if snapshot_id.contains('\0') {
-        return Err("Snapshot ID contains invalid characters".to_string());
+        return Err(AppError::InvalidSnapshotId);
     }
 
     // Short IDs are typically 8 chars, full IDs are 64 chars
     if snapshot_id.len() < 8 {
-        return Err("Snapshot ID too short (minimum 8 characters)".to_string());
+        return Err(AppError::SnapshotIdTooShort);
     }
 
     if snapshot_id.len() > 64 {
-        return Err("Snapshot ID too long (maximum 64 characters)".to_string());
+        return Err(AppError::SnapshotIdTooLong);
     }
 
     if !snapshot_id.chars().all(|c| c.is_ascii_hexdigit()) {
-        return Err("Snapshot ID must be hexadecimal (0-9, a-f)".to_string());
+        return Err(AppError::SnapshotIdNotHex);
     }
 
     Ok(())
 }
 
-fn validate_target_path(target: &str) -> Result<PathBuf, String> {
+fn validate_target_path(target: &str) -> Result<PathBuf> {
     if target.trim().is_empty() {
-        return Err("Target path cannot be empty".to_string());
+        return Err(AppError::EmptyTargetPath);
     }
 
     if target.contains('\0') {
-        return Err("Target path contains invalid characters".to_string());
+        return Err(AppError::InvalidTargetPath);
     }
 
     let path = PathBuf::from(target);
 
     if !path.is_absolute() {
-        return Err("Target path must be absolute (e.g., C:\\restore or /home/user/restore)".to_string());
+        return Err(AppError::RelativeTargetPath);
     }
 
     for component in path.components() {
         match component {
             Component::ParentDir => {
-                return Err("Target path cannot contain '..' components".to_string());
+                return Err(AppError::PathTraversal);
             }
             Component::Normal(s) => {
                 let component_str = s.to_string_lossy();
                 if component_str.contains('\0') {
-                    return Err("Target path contains invalid characters".to_string());
+                    return Err(AppError::InvalidTargetPath);
                 }
             }
             _ => {}
@@ -104,64 +104,64 @@ fn validate_target_path(target: &str) -> Result<PathBuf, String> {
     // Target itself might not exist yet, but parent should
     if let Some(parent) = path.parent() {
         if !parent.exists() && parent.components().count() > 1 {
-            return Err(format!("Parent directory does not exist: {}", parent.display()));
+            return Err(AppError::ParentDirectoryNotFound(parent.to_path_buf()));
         }
     }
 
     Ok(path)
 }
 
-fn validate_include_path(include_path: &str) -> Result<(), String> {
+fn validate_include_path(include_path: &str) -> Result<()> {
     if include_path.trim().is_empty() {
-        return Err("Include path cannot be empty".to_string());
+        return Err(AppError::EmptyIncludePath);
     }
 
     if include_path.contains('\0') {
-        return Err("Include path contains invalid characters".to_string());
+        return Err(AppError::InvalidIncludePath);
     }
 
     let parent_count = include_path.matches("..").count();
     if parent_count > 3 {
-        return Err("Include path contains excessive '..' components (max 3)".to_string());
+        return Err(AppError::ExcessiveParentTraversal);
     }
 
     // Must be relative to snapshot root
     let path = Path::new(include_path);
     if path.is_absolute() {
-        return Err("Include path should be relative, not absolute".to_string());
+        return Err(AppError::AbsoluteIncludePath);
     }
 
     Ok(())
 }
 
-fn validate_repo_id(repo_id: &str) -> Result<(), String> {
+fn validate_repo_id(repo_id: &str) -> Result<()> {
     if repo_id.trim().is_empty() {
-        return Err("Repository ID cannot be empty".to_string());
+        return Err(AppError::EmptyRepoId);
     }
 
     if repo_id.contains('\0') {
-        return Err("Repository ID contains invalid characters".to_string());
+        return Err(AppError::InvalidRepoId);
     }
 
     // Alphanumeric with hyphens/underscores only (safe for filenames)
     if !repo_id.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
-        return Err("Repository ID can only contain letters, numbers, hyphens, and underscores".to_string());
+        return Err(AppError::InvalidRepoIdCharacters);
     }
 
     if repo_id.len() > 100 {
-        return Err("Repository ID too long (maximum 100 characters)".to_string());
+        return Err(AppError::RepoIdTooLong);
     }
 
     Ok(())
 }
 
-fn validate_password(password: &str) -> Result<(), String> {
+fn validate_password(password: &str) -> Result<()> {
     if password.is_empty() {
-        return Err("Password cannot be empty".to_string());
+        return Err(AppError::EmptyPassword);
     }
 
     if password.contains('\0') {
-        return Err("Password contains invalid characters".to_string());
+        return Err(AppError::InvalidPassword);
     }
 
     Ok(())
@@ -211,7 +211,7 @@ fn run_restic_command(
     password: &str,
     args: &[&str],
     error_mode: ErrorHandling,
-) -> Result<String, String> {
+) -> Result<String> {
     let mut cmd = Command::new(find_restic_binary());
     cmd.arg("-r")
        .arg(repo)
@@ -226,7 +226,7 @@ fn run_restic_command(
 
     let output = cmd
         .output()
-        .map_err(|e| format!("Failed to execute restic: {}", e))?;
+        .map_err(|e| AppError::ResticExecution(e.to_string()))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -234,7 +234,7 @@ fn run_restic_command(
     if !output.status.success() {
         match error_mode {
             ErrorHandling::Strict => {
-                Err(format!("Restic error: {}", stderr))
+                Err(AppError::ResticError(stderr))
             }
             ErrorHandling::Lenient => {
                 let is_fatal = stderr.contains("repository does not exist")
@@ -243,7 +243,7 @@ fn run_restic_command(
                     || (stderr.contains("snapshot") && stderr.contains("not found"));
 
                 if is_fatal {
-                    Err(format!("Restore failed: {}", stderr))
+                    Err(AppError::RestoreFailed(stderr))
                 } else {
                     Ok(format!("Restored with warnings:\n{}", stderr))
                 }
@@ -254,17 +254,17 @@ fn run_restic_command(
     }
 }
 
-fn run_restic(repo: &str, password: &str, args: &[&str]) -> Result<String, String> {
+fn run_restic(repo: &str, password: &str, args: &[&str]) -> Result<String> {
     run_restic_command(repo, password, args, ErrorHandling::Strict)
 }
 
 // Fatal errors (wrong password, missing repo) still fail, but warnings are allowed
-fn run_restic_restore(repo: &str, password: &str, args: &[&str]) -> Result<String, String> {
+fn run_restic_restore(repo: &str, password: &str, args: &[&str]) -> Result<String> {
     run_restic_command(repo, password, args, ErrorHandling::Lenient)
 }
 
 #[command]
-pub async fn connect_repository(repo: String, password: String) -> Result<String, String> {
+pub async fn connect_repository(repo: String, password: String) -> std::result::Result<String, String> {
     validate_repository_path(&repo)?;
     validate_password(&password)?;
 
@@ -273,18 +273,18 @@ pub async fn connect_repository(repo: String, password: String) -> Result<String
 }
 
 #[command]
-pub async fn list_snapshots(repo: String, password: String) -> Result<Vec<Snapshot>, String> {
+pub async fn list_snapshots(repo: String, password: String) -> std::result::Result<Vec<Snapshot>, String> {
     validate_repository_path(&repo)?;
     validate_password(&password)?;
 
     let output = run_restic(&repo, &password, &["snapshots", "--json"])?;
     let snapshots: Vec<Snapshot> = serde_json::from_str(&output)
-        .map_err(|e| format!("Failed to parse snapshots JSON: {}", e))?;
+        .map_err(|e| AppError::SnapshotJsonParse(e.to_string()))?;
     Ok(snapshots)
 }
 
 #[command]
-pub async fn get_snapshot_details(repo: String, password: String, snapshot_id: String) -> Result<Vec<FileNode>, String> {
+pub async fn get_snapshot_details(repo: String, password: String, snapshot_id: String) -> std::result::Result<Vec<FileNode>, String> {
     validate_repository_path(&repo)?;
     validate_password(&password)?;
     validate_snapshot_id(&snapshot_id)?;
@@ -303,7 +303,7 @@ pub async fn get_snapshot_details(repo: String, password: String, snapshot_id: S
 }
 
 #[command]
-pub async fn restore_snapshot(repo: String, password: String, snapshot_id: String, target: String) -> Result<String, String> {
+pub async fn restore_snapshot(repo: String, password: String, snapshot_id: String, target: String) -> std::result::Result<String, String> {
     validate_repository_path(&repo)?;
     validate_password(&password)?;
     validate_snapshot_id(&snapshot_id)?;
@@ -320,7 +320,7 @@ pub async fn restore_selective(
     snapshot_id: String,
     target: String,
     include_paths: Vec<String>
-) -> Result<String, String> {
+) -> std::result::Result<String, String> {
     validate_repository_path(&repo)?;
     validate_password(&password)?;
     validate_snapshot_id(&snapshot_id)?;
@@ -331,7 +331,7 @@ pub async fn restore_selective(
     }
 
     if include_paths.is_empty() {
-        return Err("At least one include path is required for selective restore".to_string());
+        return Err(AppError::NoIncludePaths.into());
     }
 
     let target_str = validated_target.to_str().unwrap();
@@ -350,7 +350,7 @@ pub async fn restore_selective(
 }
 
 #[command]
-pub async fn browse_snapshot(repo: String, password: String, snapshot_id: String, path: Option<String>) -> Result<Vec<FileNode>, String> {
+pub async fn browse_snapshot(repo: String, password: String, snapshot_id: String, path: Option<String>) -> std::result::Result<Vec<FileNode>, String> {
     validate_repository_path(&repo)?;
     validate_password(&password)?;
     validate_snapshot_id(&snapshot_id)?;
@@ -384,83 +384,83 @@ pub async fn browse_snapshot(repo: String, password: String, snapshot_id: String
 }
 
 #[command]
-pub async fn get_snapshot_stats(repo: String, password: String, snapshot_id: String) -> Result<serde_json::Value, String> {
+pub async fn get_snapshot_stats(repo: String, password: String, snapshot_id: String) -> std::result::Result<serde_json::Value, String> {
     validate_repository_path(&repo)?;
     validate_password(&password)?;
     validate_snapshot_id(&snapshot_id)?;
 
     let output = run_restic(&repo, &password, &["stats", "--json", &snapshot_id])?;
     let stats: serde_json::Value = serde_json::from_str(&output)
-        .map_err(|e| format!("Failed to parse stats JSON: {}", e))?;
+        .map_err(|e| AppError::StatsJsonParse(e.to_string()))?;
     Ok(stats)
 }
 
 #[command]
-pub async fn get_repository_stats(repo: String, password: String) -> Result<serde_json::Value, String> {
+pub async fn get_repository_stats(repo: String, password: String) -> std::result::Result<serde_json::Value, String> {
     validate_repository_path(&repo)?;
     validate_password(&password)?;
 
     let output = run_restic(&repo, &password, &["stats", "--json", "--mode", "raw-data"])?;
     let stats: serde_json::Value = serde_json::from_str(&output)
-        .map_err(|e| format!("Failed to parse repository stats JSON: {}", e))?;
+        .map_err(|e| AppError::RepoStatsJsonParse(e.to_string()))?;
     Ok(stats)
 }
 
 #[command]
-pub async fn save_repositories(repositories: Vec<SavedRepository>) -> Result<(), String> {
+pub async fn save_repositories(repositories: Vec<SavedRepository>) -> std::result::Result<(), String> {
     for repo in &repositories {
         validate_repo_id(&repo.id)?;
         validate_repository_path(&repo.path)?;
         validate_password(&repo.password)?;
 
         if repo.name.trim().is_empty() {
-            return Err("Repository name cannot be empty".to_string());
+            return Err(AppError::EmptyRepositoryName.into());
         }
 
         if repo.name.len() > 200 {
-            return Err("Repository name too long (maximum 200 characters)".to_string());
+            return Err(AppError::RepositoryNameTooLong.into());
         }
     }
 
     let config = AppConfig { repositories };
-    save_config(&config)?;
+    save_config(&config).map_err(|e| AppError::Storage(e))?;
     Ok(())
 }
 
 #[command]
-pub async fn load_repositories() -> Result<Vec<SavedRepository>, String> {
-    let config = load_config()?;
+pub async fn load_repositories() -> std::result::Result<Vec<SavedRepository>, String> {
+    let config = load_config().map_err(|e| AppError::Storage(e))?;
     Ok(config.repositories)
 }
 
 #[command]
-pub async fn get_config_path() -> Result<String, String> {
-    let path = crate::storage::get_config_file_path()?;
+pub async fn get_config_path() -> std::result::Result<String, String> {
+    let path = crate::storage::get_config_file_path().map_err(|e| AppError::Storage(e))?;
     Ok(path.to_string_lossy().to_string())
 }
 
 #[command]
-pub async fn save_snapshot_stats_cache(repo_id: String, cache: StatsCache) -> Result<(), String> {
+pub async fn save_snapshot_stats_cache(repo_id: String, cache: StatsCache) -> std::result::Result<(), String> {
     validate_repo_id(&repo_id)?;
 
-    save_stats_cache(&repo_id, &cache)?;
+    save_stats_cache(&repo_id, &cache).map_err(|e| AppError::Storage(e))?;
     Ok(())
 }
 
 #[command]
-pub async fn load_snapshot_stats_cache(repo_id: String) -> Result<StatsCache, String> {
+pub async fn load_snapshot_stats_cache(repo_id: String) -> std::result::Result<StatsCache, String> {
     validate_repo_id(&repo_id)?;
 
-    load_stats_cache(&repo_id)
+    Ok(load_stats_cache(&repo_id).map_err(|e| AppError::Storage(e))?)
 }
 
 #[command]
-pub async fn remove_repository(repo_id: String) -> Result<(), String> {
+pub async fn remove_repository(repo_id: String) -> std::result::Result<(), String> {
     validate_repo_id(&repo_id)?;
 
-    let mut config = load_config()?;
+    let mut config = load_config().map_err(|e| AppError::Storage(e))?;
     config.repositories.retain(|r| r.id != repo_id);
-    save_config(&config)?;
-    delete_stats_cache(&repo_id)?;
+    save_config(&config).map_err(|e| AppError::Storage(e))?;
+    delete_stats_cache(&repo_id).map_err(|e| AppError::Storage(e))?;
     Ok(())
 }
