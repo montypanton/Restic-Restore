@@ -1,9 +1,10 @@
 use crate::error::{AppError, Result};
 use crate::models::{Snapshot, FileNode};
-use crate::storage::{AppConfig, SavedRepository, StatsCache, save_config, load_config, save_stats_cache, load_stats_cache, delete_stats_cache};
+use crate::storage::{SavedRepository, StatsCache, save_config, load_config, save_stats_cache, load_stats_cache, delete_stats_cache};
 use std::process::Command;
 use std::path::{Path, PathBuf, Component};
 use tauri::command;
+use serde::{Serialize, Deserialize};
 use serde_json::Value;
 use dirs;
 use tracing::{info, debug, warn, error, instrument};
@@ -56,7 +57,7 @@ fn validate_snapshot_id(snapshot_id: &str) -> Result<()> {
         return Err(AppError::InvalidSnapshotId);
     }
 
-    // Short IDs are typically 8 chars, full IDs are 64 chars
+    // Short IDs are 8 chars, full IDs are 64 chars
     if snapshot_id.len() < 8 {
         return Err(AppError::SnapshotIdTooShort);
     }
@@ -168,38 +169,148 @@ fn validate_password(password: &str) -> Result<()> {
     Ok(())
 }
 
+fn validate_restic_binary(path: &str) -> bool {
+    let mut cmd = Command::new(path);
+    cmd.arg("--version");
+
+    #[cfg(target_os = "windows")]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    if let Ok(output) = cmd.output() {
+        if output.status.success() {
+            if let Ok(version_output) = String::from_utf8(output.stdout) {
+                return version_output.contains("restic");
+            }
+        }
+    }
+    false
+}
+
 fn find_restic_binary() -> String {
+    if let Ok(config) = load_config() {
+        if let Some(custom_path) = config.restic_binary_path {
+            if !custom_path.is_empty() {
+                debug!("Using configured restic binary path: {}", custom_path);
+                return custom_path;
+            }
+        }
+    }
+
     #[cfg(target_os = "macos")]
-    let platform_locations: Vec<String> = vec![
-        "/opt/homebrew/bin/restic".to_string(),
-        "/usr/local/bin/restic".to_string(),
-        "/usr/bin/restic".to_string(),
-    ];
+    let platform_locations: Vec<String> = {
+        let mut locations = vec![
+            "/opt/homebrew/bin/restic".to_string(),
+            "/usr/local/bin/restic".to_string(),
+            "/opt/local/bin/restic".to_string(),
+            "/usr/bin/restic".to_string(),
+            "/usr/local/opt/restic/bin/restic".to_string(),
+        ];
+
+        if let Some(home_dir) = dirs::home_dir() {
+            if let Some(home_str) = home_dir.to_str() {
+                locations.push(format!("{}/bin/restic", home_str));
+                locations.push(format!("{}/.local/bin/restic", home_str));
+            }
+        }
+
+        locations
+    };
 
     #[cfg(target_os = "windows")]
     let platform_locations = {
         let mut locations = vec![];
 
         if let Some(home_dir) = dirs::home_dir() {
-            let scoop_shim = home_dir.join("scoop\\shims\\restic.exe");
-            if let Some(path_str) = scoop_shim.to_str() {
-                locations.push(path_str.to_string());
+            if let Some(home_str) = home_dir.to_str() {
+                locations.push(format!("{}\\scoop\\shims\\restic.exe", home_str));
+                locations.push(format!("{}\\.local\\bin\\restic.exe", home_str));
+                locations.push(format!("{}\\AppData\\Local\\restic\\restic.exe", home_str));
             }
         }
 
+        locations.push("C:\\ProgramData\\chocolatey\\bin\\restic.exe".to_string());
         locations.push("C:\\Program Files\\Restic\\restic.exe".to_string());
         locations.push("C:\\Program Files (x86)\\Restic\\restic.exe".to_string());
+        locations.push("C:\\Tools\\restic.exe".to_string());
 
         locations
     };
 
     for location in &platform_locations {
         if Path::new(location).exists() {
+            debug!("Auto-detected restic binary at: {}", location);
             return location.to_string();
         }
     }
 
+    debug!("Using default restic binary from PATH");
     "restic".to_string()
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ResticSetupStatus {
+    pub found: bool,
+    pub path: Option<String>,
+    pub valid: bool,
+    pub setup_completed: bool,
+}
+
+#[command]
+#[instrument]
+pub async fn check_restic_setup_status() -> std::result::Result<ResticSetupStatus, String> {
+    info!("Checking restic setup status");
+
+    let config = load_config().map_err(|e| AppError::Storage(e))?;
+    let setup_completed = config.setup_completed.unwrap_or(false);
+
+    if let Some(custom_path) = &config.restic_binary_path {
+        if !custom_path.is_empty() {
+            let valid = validate_restic_binary(custom_path);
+            debug!("User-configured binary at {}: valid={}", custom_path, valid);
+            return Ok(ResticSetupStatus {
+                found: true,
+                path: Some(custom_path.clone()),
+                valid,
+                setup_completed,
+            });
+        }
+    }
+
+    let detected_path = find_restic_binary();
+
+    if detected_path == "restic" {
+        let valid = validate_restic_binary(&detected_path);
+        debug!("Using restic from PATH: valid={}", valid);
+
+        if valid {
+            return Ok(ResticSetupStatus {
+                found: true,
+                path: Some(detected_path),
+                valid: true,
+                setup_completed,
+            });
+        } else {
+            return Ok(ResticSetupStatus {
+                found: false,
+                path: None,
+                valid: false,
+                setup_completed,
+            });
+        }
+    }
+
+    let valid = validate_restic_binary(&detected_path);
+    debug!("Auto-detected binary at {}: valid={}", detected_path, valid);
+
+    Ok(ResticSetupStatus {
+        found: true,
+        path: Some(detected_path),
+        valid,
+        setup_completed,
+    })
 }
 
 enum ErrorHandling {
@@ -447,7 +558,9 @@ pub async fn save_repositories(repositories: Vec<SavedRepository>) -> std::resul
         }
     }
 
-    let config = AppConfig { repositories };
+    // Preserve existing restic_binary_path when saving repositories
+    let mut config = load_config().map_err(|e| AppError::Storage(e)).unwrap_or_default();
+    config.repositories = repositories;
     save_config(&config).map_err(|e| AppError::Storage(e))?;
     info!("Repositories saved successfully");
     Ok(())
@@ -494,5 +607,60 @@ pub async fn remove_repository(repo_id: String) -> std::result::Result<(), Strin
     save_config(&config).map_err(|e| AppError::Storage(e))?;
     delete_stats_cache(&repo_id).map_err(|e| AppError::Storage(e))?;
     info!("Repository removed successfully");
+    Ok(())
+}
+
+#[command]
+#[instrument]
+pub async fn get_restic_binary_path() -> std::result::Result<Option<String>, String> {
+    info!("Getting configured restic binary path");
+    let config = load_config().map_err(|e| AppError::Storage(e))?;
+    Ok(config.restic_binary_path)
+}
+
+#[command]
+#[instrument]
+pub async fn set_restic_binary_path(path: Option<String>) -> std::result::Result<(), String> {
+    if let Some(ref p) = path {
+        info!("Setting restic binary path to: {}", p);
+
+        if !p.is_empty() && !Path::new(p).exists() {
+            warn!("Restic binary path does not exist: {}", p);
+            return Err(format!("Restic binary not found at: {}", p));
+        }
+
+        if !validate_restic_binary(p) {
+            warn!("Path exists but is not a valid restic binary: {}", p);
+            return Err(format!("File is not a valid restic binary: {}", p));
+        }
+    } else {
+        info!("Clearing restic binary path (will use auto-detection)");
+    }
+
+    let mut config = load_config().map_err(|e| AppError::Storage(e))?;
+    config.restic_binary_path = path;
+    config.setup_completed = Some(true);
+    save_config(&config).map_err(|e| AppError::Storage(e))?;
+    info!("Restic binary path updated successfully, setup marked as completed");
+    Ok(())
+}
+
+#[command]
+#[instrument]
+pub async fn get_detected_restic_path() -> std::result::Result<String, String> {
+    info!("Detecting restic binary path");
+    let path = find_restic_binary();
+    info!("Detected restic binary at: {}", path);
+    Ok(path)
+}
+
+#[command]
+#[instrument]
+pub async fn mark_setup_completed() -> std::result::Result<(), String> {
+    info!("Marking restic setup as completed");
+    let mut config = load_config().map_err(|e| AppError::Storage(e))?;
+    config.setup_completed = Some(true);
+    save_config(&config).map_err(|e| AppError::Storage(e))?;
+    info!("Setup marked as completed");
     Ok(())
 }

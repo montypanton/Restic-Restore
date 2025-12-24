@@ -37,7 +37,12 @@ pub fn run() {
             get_config_path,
             save_snapshot_stats_cache,
             load_snapshot_stats_cache,
-            remove_repository
+            remove_repository,
+            get_restic_binary_path,
+            set_restic_binary_path,
+            get_detected_restic_path,
+            check_restic_setup_status,
+            mark_setup_completed
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

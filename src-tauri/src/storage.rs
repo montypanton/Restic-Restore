@@ -14,6 +14,10 @@ pub struct SavedRepository {
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct AppConfig {
     pub repositories: Vec<SavedRepository>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub restic_binary_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub setup_completed: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
