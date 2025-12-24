@@ -1,0 +1,168 @@
+/**
+ * Settings Window Component Styles
+ * Window for viewing and managing repository settings
+ */
+
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.window {
+  background-color: var(--color-bg-white);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-6);
+  max-width: 500px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  margin: auto;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-6);
+}
+
+.title {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.closeButton {
+  background: none;
+  border: none;
+  font-size: 28px;
+  cursor: pointer;
+  color: var(--color-text-primary);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: background-color var(--transition-fast);
+}
+
+.closeButton:hover {
+  background-color: var(--color-bg-hover);
+}
+
+.section {
+  margin-bottom: var(--spacing-6);
+}
+
+.sectionTitle {
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--spacing-3);
+}
+
+.infoRow {
+  margin-bottom: var(--spacing-4);
+}
+
+.label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--color-text-secondary);
+  margin-bottom: 6px;
+}
+
+.value {
+  font-size: var(--text-base);
+  color: var(--color-text-primary);
+  padding: 10px 12px;
+  background-color: var(--color-bg-hover);
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+
+.passwordContainer {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.passwordValue {
+  flex: 1;
+  font-size: var(--text-base);
+  color: var(--color-text-primary);
+  padding: 10px 12px;
+  background-color: var(--color-bg-hover);
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+
+.passwordValue.hidden {
+  user-select: none;
+  cursor: default;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+  word-break: normal;
+}
+
+.passwordValue.visible {
+  user-select: text;
+  cursor: text;
+  overflow: auto;
+  white-space: normal;
+}
+
+.toggleButton {
+  padding: 8px 12px;
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  background-color: white;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.toggleButton:hover {
+  background-color: var(--color-bg-hover);
+}
+
+.divider {
+  height: 1px;
+  background-color: var(--color-border);
+  margin: var(--spacing-6) 0;
+}
+
+.removeButton {
+  width: 100%;
+  padding: 14px 24px;
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  background-color: white;
+  border: 2px solid var(--color-error);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  color: var(--color-error);
+}
+
+.removeButton:hover {
+  background-color: var(--color-error-bg);
+  border-color: #dc2626;
+  color: #dc2626;
+}

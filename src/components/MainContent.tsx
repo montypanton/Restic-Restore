@@ -1,7 +1,7 @@
-import React from 'react';
 import { Header } from './Header';
 import { TimelineView } from './TimelineView';
 import { Repository, SnapshotWithStats } from '../types';
+import styles from './MainContent.module.css';
 
 interface MainContentProps {
     repository: Repository | null;
@@ -17,11 +17,7 @@ interface MainContentProps {
     onAddRepository?: () => void;
 }
 
-/**
- * Main content area displaying repository header and snapshot timeline.
- * Shows empty state when no repository is selected.
- */
-export const MainContent: React.FC<MainContentProps> = ({
+export function MainContent({
     repository,
     snapshots,
     loading,
@@ -33,50 +29,20 @@ export const MainContent: React.FC<MainContentProps> = ({
     onSettings,
     hasRepositories = false,
     onAddRepository
-}) => {
-    const emptyStateStyle: React.CSSProperties = {
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100%',
-        color: 'var(--color-text-secondary)',
-        fontSize: '14px',
-        padding: '40px',
-        gap: '16px'
-    };
-
-    const addButtonStyle: React.CSSProperties = {
-        padding: '12px 24px',
-        border: '1px solid var(--color-border)',
-        borderRadius: '8px',
-        backgroundColor: 'var(--color-bg-white)',
-        cursor: 'pointer',
-        fontSize: '14px',
-        fontWeight: 500,
-        color: 'var(--color-text-primary)',
-        transition: 'all 0.15s ease'
-    };
-
+}: MainContentProps) {
     if (!repository) {
         return (
-            <div style={emptyStateStyle}>
+            <div className={styles.emptyState}>
                 <div>
-                    {hasRepositories 
+                    {hasRepositories
                         ? 'Select a repository to view snapshots'
                         : 'Add a repository to view, browse and restore from'
                     }
                 </div>
                 {!hasRepositories && onAddRepository && (
                     <button
-                        style={addButtonStyle}
+                        className={styles.addButton}
                         onClick={onAddRepository}
-                        onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = 'var(--color-bg-hover)';
-                        }}
-                        onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = 'var(--color-bg-white)';
-                        }}
                     >
                         + Add Repository
                     </button>
@@ -85,11 +51,7 @@ export const MainContent: React.FC<MainContentProps> = ({
         );
     }
 
-    const lastBackupTime = snapshots.length > 0
-        ? snapshots.reduce((latest, snap) => {
-            return new Date(snap.time) > new Date(latest) ? snap.time : latest;
-        }, snapshots[0].time)
-        : undefined;
+    const lastBackupTime = snapshots[0]?.time;
 
     return (
         <>
@@ -110,4 +72,4 @@ export const MainContent: React.FC<MainContentProps> = ({
             />
         </>
     );
-};
+}

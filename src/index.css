@@ -1,38 +1,18 @@
+/**
+ * Application specific styles
+ * Global styles are imported from src/styles/
+ */
+
 :root {
-  --color-bg-white: #ffffff;
-  --color-bg-hover: #f9fafb;
-  --color-bg-off-white: #f9fafb;
-  --color-border: #000000;
-  --color-border-light: #e5e7eb;
-  --color-text-primary: #1d1d1f;
-  --color-text-secondary: #6b7280;
-  --color-primary-blue: #007aff;
-  --sidebar-width: 224px;
-  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
+/* Tauri app specific body styles */
 body {
-  margin: 0;
-  padding: 0;
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  font-family: var(--font-family);
-  color: var(--color-text-primary);
-  background-color: var(--color-bg-white);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
 ::-webkit-scrollbar {
@@ -56,16 +36,8 @@ body {
   background-clip: padding-box;
 }
 
-button, a {
-  transition: all 0.15s ease;
-}
-
+/* Text selection color */
 ::selection {
   background-color: rgba(0, 122, 255, 0.3);
   color: inherit;
-}
-
-*:focus-visible {
-  outline: 2px solid var(--color-primary-blue);
-  outline-offset: 2px;
 }

@@ -4,8 +4,6 @@ mod storage;
 
 use commands::*;
 
-/// Main entry point for the Tauri application.
-/// Initializes plugins and registers command handlers.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -20,7 +18,6 @@ pub fn run() {
             restore_snapshot,
             restore_selective,
             browse_snapshot,
-            browse_snapshot_full,
             get_snapshot_stats,
             get_repository_stats,
             save_repositories,

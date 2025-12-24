@@ -49,3 +49,12 @@ export interface SnapshotStats {
 export interface StatsCache {
     stats: Record<string, SnapshotStats>;
 }
+
+export interface ResticSnapshotStats {
+    total_size: number;
+    total_file_count: number;
+}
+
+export interface ResticRepositoryStats {
+    total_size: number;
+}

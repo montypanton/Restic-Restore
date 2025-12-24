@@ -1,14 +1,13 @@
 import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { VALIDATION } from '../config/constants';
+import { REPO_PATH_PATTERNS } from '../config/patterns';
+import styles from './ConnectionForm.module.css';
 
 interface ConnectionFormProps {
     onConnect: (repo: string, password: string) => void;
 }
 
-/**
- * Form for adding a new Restic repository connection.
- * Validates connection before adding to saved repositories.
- */
 export function ConnectionForm({ onConnect }: ConnectionFormProps) {
     const [repo, setRepo] = useState('');
     const [password, setPassword] = useState('');
@@ -21,11 +20,11 @@ export function ConnectionForm({ onConnect }: ConnectionFormProps) {
         
         if (!repo.trim()) {
             errors.repo = 'Repository path is required';
-        } else if (repo.trim().length < 3) {
+        } else if (repo.trim().length < VALIDATION.MIN_REPO_PATH_LENGTH) {
             errors.repo = 'Repository path is too short';
         } else {
-            const isLocalPath = /^[a-zA-Z]:[\\\/]/.test(repo) || /^[\/~]/.test(repo);
-            const isRemoteUrl = /^(sftp|rest|s3|b2|azure|gs|rclone):/.test(repo);
+            const isLocalPath = REPO_PATH_PATTERNS.WINDOWS_ABSOLUTE.test(repo) || REPO_PATH_PATTERNS.UNIX_ABSOLUTE.test(repo);
+            const isRemoteUrl = REPO_PATH_PATTERNS.RESTIC_REMOTE.test(repo);
             
             if (!isLocalPath && !isRemoteUrl) {
                 errors.repo = 'Must be a valid local path (e.g., C:\\backup) or remote URL (e.g., sftp:user@host:/path)';
@@ -34,8 +33,6 @@ export function ConnectionForm({ onConnect }: ConnectionFormProps) {
         
         if (!password) {
             errors.password = 'Password is required';
-        } else if (password.length < 1) {
-            errors.password = 'Password cannot be empty';
         }
         
         setValidationErrors(errors);
@@ -45,11 +42,11 @@ export function ConnectionForm({ onConnect }: ConnectionFormProps) {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError(null);
-        
+
         if (!validateForm()) {
             return;
         }
-        
+
         setLoading(true);
 
         try {
@@ -62,71 +59,12 @@ export function ConnectionForm({ onConnect }: ConnectionFormProps) {
         }
     };
 
-    const titleStyle: React.CSSProperties = {
-        fontSize: '20px',
-        fontWeight: 600,
-        color: 'var(--color-text-primary)',
-        marginBottom: '20px'
-    };
-
-    const formGroupStyle: React.CSSProperties = {
-        marginBottom: '20px'
-    };
-
-    const labelStyle: React.CSSProperties = {
-        display: 'block',
-        fontSize: '13px',
-        fontWeight: 500,
-        color: 'var(--color-text-primary)',
-        marginBottom: '8px'
-    };
-
-    const inputStyle: React.CSSProperties = {
-        width: '100%',
-        padding: '10px 12px',
-        fontSize: '14px',
-        border: '1px solid var(--color-border-light)',
-        borderRadius: '8px',
-        outline: 'none',
-        transition: 'border-color 0.2s ease',
-        fontFamily: 'var(--font-family)'
-    };
-
-    const buttonStyle: React.CSSProperties = {
-        width: '100%',
-        padding: '12px',
-        fontSize: '14px',
-        fontWeight: 500,
-        backgroundColor: 'var(--color-primary-blue)',
-        color: 'white',
-        border: 'none',
-        borderRadius: '8px',
-        cursor: 'pointer',
-        transition: 'all 0.2s ease'
-    };
-
-    const errorStyle: React.CSSProperties = {
-        padding: '12px',
-        backgroundColor: '#fff5f5',
-        border: '1px solid #feb2b2',
-        borderRadius: '8px',
-        color: '#c53030',
-        fontSize: '13px',
-        marginBottom: '16px'
-    };
-
-    const hintStyle: React.CSSProperties = {
-        fontSize: '12px',
-        color: 'var(--color-text-secondary)',
-        marginTop: '6px'
-    };
-
     return (
         <div>
-            <h2 style={titleStyle}>Add Repository</h2>
+            <h2 className={styles.title}>Add Repository</h2>
             <form onSubmit={handleSubmit}>
-                <div style={formGroupStyle}>
-                    <label htmlFor="repo" style={labelStyle}>
+                <div className={styles.formGroup}>
+                    <label htmlFor="repo" className={styles.label}>
                         Repository Path
                     </label>
                     <input
@@ -141,30 +79,17 @@ export function ConnectionForm({ onConnect }: ConnectionFormProps) {
                         }}
                         placeholder="/path/to/repo"
                         required
-                        style={{
-                            ...inputStyle,
-                            borderColor: validationErrors.repo ? '#ef4444' : 'var(--color-border-light)'
-                        }}
-                        onFocus={(e) => {
-                            if (!validationErrors.repo) {
-                                e.currentTarget.style.borderColor = 'var(--color-primary-blue)';
-                            }
-                        }}
-                        onBlur={(e) => {
-                            if (!validationErrors.repo) {
-                                e.currentTarget.style.borderColor = 'var(--color-border-light)';
-                            }
-                        }}
+                        className={`${styles.input} ${validationErrors.repo ? styles.error : ''}`}
                     />
                     {validationErrors.repo && (
-                        <div style={{ ...hintStyle, color: '#ef4444', marginTop: '4px' }}>
+                        <div className={styles.validationError}>
                             {validationErrors.repo}
                         </div>
                     )}
                 </div>
 
-                <div style={formGroupStyle}>
-                    <label htmlFor="password" style={labelStyle}>
+                <div className={styles.formGroup}>
+                    <label htmlFor="password" className={styles.label}>
                         Repository Password
                     </label>
                     <input
@@ -179,48 +104,21 @@ export function ConnectionForm({ onConnect }: ConnectionFormProps) {
                         }}
                         placeholder="Enter password"
                         required
-                        style={{
-                            ...inputStyle,
-                            borderColor: validationErrors.password ? '#ef4444' : 'var(--color-border-light)'
-                        }}
-                        onFocus={(e) => {
-                            if (!validationErrors.password) {
-                                e.currentTarget.style.borderColor = 'var(--color-primary-blue)';
-                            }
-                        }}
-                        onBlur={(e) => {
-                            if (!validationErrors.password) {
-                                e.currentTarget.style.borderColor = 'var(--color-border-light)';
-                            }
-                        }}
+                        className={`${styles.input} ${validationErrors.password ? styles.error : ''}`}
                     />
                     {validationErrors.password && (
-                        <div style={{ ...hintStyle, color: '#ef4444', marginTop: '4px' }}>
+                        <div className={styles.validationError}>
                             {validationErrors.password}
                         </div>
                     )}
                 </div>
 
-                {error && <div style={errorStyle}>{error}</div>}
+                {error && <div className={styles.errorMessage}>{error}</div>}
 
                 <button
                     type="submit"
                     disabled={loading}
-                    style={{
-                        ...buttonStyle,
-                        opacity: loading ? 0.6 : 1,
-                        cursor: loading ? 'not-allowed' : 'pointer'
-                    }}
-                    onMouseEnter={(e) => {
-                        if (!loading) {
-                            e.currentTarget.style.opacity = '0.9';
-                        }
-                    }}
-                    onMouseLeave={(e) => {
-                        if (!loading) {
-                            e.currentTarget.style.opacity = '1';
-                        }
-                    }}
+                    className={styles.submitButton}
                 >
                     {loading ? 'Connecting...' : 'Connect Repository'}
                 </button>

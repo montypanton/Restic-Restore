@@ -1,0 +1,124 @@
+/**
+ * CSS Reset
+ * Normalizes default browser styles for consistent cross browser rendering.
+ */
+
+/* ===== Box Sizing ===== */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* ===== Remove Default Margins ===== */
+
+* {
+  margin: 0;
+  padding: 0;
+}
+
+/* ===== HTML & Body ===== */
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--font-family);
+  font-size: var(--text-base);
+  line-height: var(--line-height-normal);
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-white);
+}
+
+/* ===== Typography ===== */
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: var(--font-semibold);
+  line-height: var(--line-height-tight);
+}
+
+p {
+  margin-bottom: 0;
+}
+
+/* ===== Lists ===== */
+
+ul, ol {
+  list-style: none;
+}
+
+/* ===== Links ===== */
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ===== Images & Media ===== */
+
+img,
+picture,
+video,
+canvas,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+/* ===== Form Elements ===== */
+
+input,
+button,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+/* ===== Prevent Text Overflow ===== */
+
+p, h1, h2, h3, h4, h5, h6 {
+  overflow-wrap: break-word;
+}
+
+/* ===== Root Stacking Context ===== */
+
+#root,
+#__next {
+  isolation: isolate;
+}
+
+/* ===== Accessibility ===== */
+
+/* Remove focus outline for mouse users, keep for keyboard users */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-primary-blue);
+  outline-offset: 2px;
+}
+
+/* ===== Table Reset ===== */
+
+table {
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+/* ===== Remove default button styles ===== */
+
+button::-moz-focus-inner {
+  border: 0;
+  padding: 0;
+}

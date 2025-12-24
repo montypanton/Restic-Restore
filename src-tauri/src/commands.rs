@@ -45,56 +45,34 @@ fn find_restic_binary() -> String {
     "restic".to_string()
 }
 
-fn run_restic(repo: &str, password: &str, args: &[&str]) -> Result<String, String> {
-    #[cfg(target_os = "windows")]
-    let output = {
-        Command::new(find_restic_binary())
-            .arg("-r")
-            .arg(repo)
-            .args(args)
-            .env("RESTIC_PASSWORD", password)
-            .creation_flags(0x08000000) // CREATE_NO_WINDOW
-            .output()
-            .map_err(|e| format!("Failed to execute restic: {}", e))?
-    };
-
-    #[cfg(not(target_os = "windows"))]
-    let output = Command::new(find_restic_binary())
-        .arg("-r")
-        .arg(repo)
-        .args(args)
-        .env("RESTIC_PASSWORD", password)
-        .output()
-        .map_err(|e| format!("Failed to execute restic: {}", e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Restic error: {}", stderr));
-    }
-
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+/// how to handle non zero exit codes from restic commands.
+enum ErrorHandling {
+    Strict,
+    /// Some errors are treated as warnings (for restore operation errors)
+    Lenient,
 }
 
-/// Executes restic restore with lenient error handling for non-fatal warnings.
-fn run_restic_restore(repo: &str, password: &str, args: &[&str]) -> Result<String, String> {
-    #[cfg(target_os = "windows")]
-    let output = {
-        Command::new(find_restic_binary())
-            .arg("-r")
-            .arg(repo)
-            .args(args)
-            .env("RESTIC_PASSWORD", password)
-            .creation_flags(0x08000000) // CREATE_NO_WINDOW
-            .output()
-            .map_err(|e| format!("Failed to execute restic: {}", e))?
-    };
+/// function can execute restic commands with configurable error handling.
+fn run_restic_command(
+    repo: &str,
+    password: &str,
+    args: &[&str],
+    error_mode: ErrorHandling,
+) -> Result<String, String> {
+    let mut cmd = Command::new(find_restic_binary());
+    cmd.arg("-r")
+       .arg(repo)
+       .args(args)
+       .env("RESTIC_PASSWORD", password);
 
-    #[cfg(not(target_os = "windows"))]
-    let output = Command::new(find_restic_binary())
-        .arg("-r")
-        .arg(repo)
-        .args(args)
-        .env("RESTIC_PASSWORD", password)
+    // Windows specific: hide console window
+    #[cfg(target_os = "windows")]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let output = cmd
         .output()
         .map_err(|e| format!("Failed to execute restic: {}", e))?;
 
@@ -102,29 +80,46 @@ fn run_restic_restore(repo: &str, password: &str, args: &[&str]) -> Result<Strin
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
     if !output.status.success() {
-        let is_fatal = stderr.contains("repository does not exist")
-            || stderr.contains("wrong password")
-            || stderr.contains("unable to open repository")
-            || stderr.contains("snapshot") && stderr.contains("not found");
+        match error_mode {
+            ErrorHandling::Strict => {
+                Err(format!("Restic error: {}", stderr))
+            }
+            ErrorHandling::Lenient => {
+                let is_fatal = stderr.contains("repository does not exist")
+                    || stderr.contains("wrong password")
+                    || stderr.contains("unable to open repository")
+                    || (stderr.contains("snapshot") && stderr.contains("not found"));
 
-        if is_fatal {
-            return Err(format!("Restore failed: {}", stderr));
+                if is_fatal {
+                    Err(format!("Restore failed: {}", stderr))
+                } else {
+                    // Non fatal errors are returned as successful warnings
+                    Ok(format!("Restored with warnings:\n{}", stderr))
+                }
+            }
         }
-
-        return Ok(format!("Restored with warnings:\n{}", stderr));
+    } else {
+        Ok(stdout)
     }
-
-    Ok(stdout)
 }
 
-/// Verifies repository connection by attempting to list snapshots
+/// Executes a restic command with strict error handling.
+fn run_restic(repo: &str, password: &str, args: &[&str]) -> Result<String, String> {
+    run_restic_command(repo, password, args, ErrorHandling::Strict)
+}
+
+/// Executes restic restore with forgiving error handling for non fatal warnings.
+/// Fatal errors (wrong password, missing repository) still fail, but warnings are allowed.
+fn run_restic_restore(repo: &str, password: &str, args: &[&str]) -> Result<String, String> {
+    run_restic_command(repo, password, args, ErrorHandling::Lenient)
+}
+
 #[command]
 pub async fn connect_repository(repo: String, password: String) -> Result<String, String> {
     run_restic(&repo, &password, &["snapshots", "--latest", "1", "--json"])?;
     Ok("Connected successfully".to_string())
 }
 
-/// Lists all snapshots in the repository
 #[command]
 pub async fn list_snapshots(repo: String, password: String) -> Result<Vec<Snapshot>, String> {
     let output = run_restic(&repo, &password, &["snapshots", "--json"])?;
@@ -133,7 +128,7 @@ pub async fn list_snapshots(repo: String, password: String) -> Result<Vec<Snapsh
     Ok(snapshots)
 }
 
-/// Returns file tree for a snapshot. Parses line-delimited JSON from restic ls.
+/// Returns file tree for a snapshot. Parses line delimited JSON from restic ls.
 #[command]
 pub async fn get_snapshot_details(repo: String, password: String, snapshot_id: String) -> Result<Vec<FileNode>, String> {
     let output = run_restic(&repo, &password, &["ls", "--json", &snapshot_id])?;
@@ -149,14 +144,12 @@ pub async fn get_snapshot_details(repo: String, password: String, snapshot_id: S
     Ok(files)
 }
 
-/// Restores an entire snapshot to the target directory
 #[command]
 pub async fn restore_snapshot(repo: String, password: String, snapshot_id: String, target: String) -> Result<String, String> {
     run_restic_restore(&repo, &password, &["restore", &snapshot_id, "--target", &target])?;
     Ok("Restore completed".to_string())
 }
 
-/// Restores selected files/directories from a snapshot to the target directory
 #[command]
 pub async fn restore_selective(
     repo: String,
@@ -186,9 +179,9 @@ pub async fn browse_snapshot(repo: String, password: String, snapshot_id: String
     if let Some(p) = &path {
         args.push(p);
     }
-    
+
     let output = run_restic(&repo, &password, &args)?;
-    
+
     let mut files = Vec::new();
     for line in output.lines() {
         if line.trim().is_empty() { continue; }
@@ -202,35 +195,10 @@ pub async fn browse_snapshot(repo: String, password: String, snapshot_id: String
             }
         }
     }
-    
+
     Ok(files)
 }
 
-/// Loads the complete file tree for a snapshot in a single request
-#[command]
-pub async fn browse_snapshot_full(repo: String, password: String, snapshot_id: String) -> Result<Vec<FileNode>, String> {
-    let args = vec!["ls", "--json", &snapshot_id];
-    
-    let output = run_restic(&repo, &password, &args)?;
-    
-    let mut files = Vec::new();
-    for line in output.lines() {
-        if line.trim().is_empty() { continue; }
-        if let Ok(val) = serde_json::from_str::<Value>(line) {
-            if let Some(struct_type) = val.get("struct_type") {
-                if struct_type == "node" {
-                    if let Ok(node) = serde_json::from_value::<FileNode>(val) {
-                        files.push(node);
-                    }
-                }
-            }
-        }
-    }
-    
-    Ok(files)
-}
-
-/// Returns statistics (size, file count) for a snapshot
 #[command]
 pub async fn get_snapshot_stats(repo: String, password: String, snapshot_id: String) -> Result<serde_json::Value, String> {
     let output = run_restic(&repo, &password, &["stats", "--json", &snapshot_id])?;
@@ -239,7 +207,6 @@ pub async fn get_snapshot_stats(repo: String, password: String, snapshot_id: Str
     Ok(stats)
 }
 
-/// Returns the total size of the repository on disk (all snapshots combined)
 #[command]
 pub async fn get_repository_stats(repo: String, password: String) -> Result<serde_json::Value, String> {
     let output = run_restic(&repo, &password, &["stats", "--json", "--mode", "raw-data"])?;
@@ -248,7 +215,6 @@ pub async fn get_repository_stats(repo: String, password: String) -> Result<serd
     Ok(stats)
 }
 
-/// Saves repository configurations to disk
 #[command]
 pub async fn save_repositories(repositories: Vec<SavedRepository>) -> Result<(), String> {
     let config = AppConfig { repositories };
@@ -256,34 +222,29 @@ pub async fn save_repositories(repositories: Vec<SavedRepository>) -> Result<(),
     Ok(())
 }
 
-/// Loads repository configurations from disk
 #[command]
 pub async fn load_repositories() -> Result<Vec<SavedRepository>, String> {
     let config = load_config()?;
     Ok(config.repositories)
 }
 
-/// Returns the path to the application config file
 #[command]
 pub async fn get_config_path() -> Result<String, String> {
     let path = crate::storage::get_config_file_path()?;
     Ok(path.to_string_lossy().to_string())
 }
 
-/// Saves snapshot statistics cache for a repository
 #[command]
 pub async fn save_snapshot_stats_cache(repo_id: String, cache: StatsCache) -> Result<(), String> {
     save_stats_cache(&repo_id, &cache)?;
     Ok(())
 }
 
-/// Loads snapshot statistics cache for a repository
 #[command]
 pub async fn load_snapshot_stats_cache(repo_id: String) -> Result<StatsCache, String> {
     load_stats_cache(&repo_id)
 }
 
-/// Removes a repository from the config and deletes its stats cache
 #[command]
 pub async fn remove_repository(repo_id: String) -> Result<(), String> {
     let mut config = load_config()?;
