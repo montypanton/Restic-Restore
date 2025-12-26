@@ -224,11 +224,17 @@ export function useSnapshots(): UseSnapshotsReturn {
           snapshots: batchWithStats
         });
 
-        // Update UI if still on this repo
+        // Update UI and memory cache if still on this repo
         if (currentActiveRepoId === repoId && !abortController.signal.aborted) {
           const updated = await invoke<DbSnapshotWithStats[]>('load_snapshots_from_db', { repoId });
           const uiSnapshots = updated.map(s => convertDbSnapshotToUi(s, formatBytes));
           safeSetSnapshots(repoId, uiSnapshots);
+
+          // Update memory cache with fresh data from database
+          const cache = memoryCacheMap.get(repoId);
+          if (cache) {
+            cache.snapshots = uiSnapshots;
+          }
         }
 
         setRepoLoadingState(repoId, {
@@ -407,13 +413,19 @@ export function useSnapshots(): UseSnapshotsReturn {
         snapshots: batchWithStats
       });
 
-      // Update UI
+      // Update UI and memory cache
       if (currentActiveRepoId === repoId) {
         console.log(`  📂 Reloading all snapshots from database to update UI...`);
         const updated = await invoke<DbSnapshotWithStats[]>('load_snapshots_from_db', { repoId });
         const uiSnapshots = updated.map(s => convertDbSnapshotToUi(s, formatBytes));
         console.log(`  🖥️  Updating UI with ${uiSnapshots.length} snapshots from database`);
         safeSetSnapshots(repoId, uiSnapshots);
+
+        // Update memory cache with fresh data from database
+        const cache = memoryCacheMap.get(repoId);
+        if (cache) {
+          cache.snapshots = uiSnapshots;
+        }
       }
 
       setRepoLoadingState(repoId, {
