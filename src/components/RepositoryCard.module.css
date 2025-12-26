@@ -32,6 +32,20 @@
   color: var(--color-text-primary);
 }
 
+.nameInput {
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  margin-bottom: var(--spacing-2);
+  width: 100%;
+  padding: 2px 4px;
+  border: 1px solid var(--color-primary-blue);
+  border-radius: 3px;
+  background-color: var(--color-bg-white);
+  color: var(--color-text-primary);
+  outline: none;
+  font-family: inherit;
+}
+
 .stats {
   display: flex;
   justify-content: space-between;

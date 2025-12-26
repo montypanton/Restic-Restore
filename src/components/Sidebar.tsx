@@ -7,13 +7,15 @@ interface SidebarProps {
     selectedRepoId: string | null;
     onSelectRepository: (id: string) => void;
     onAddRepository: () => void;
+    onRenameRepository?: (repoId: string, newName: string) => void;
 }
 
 export function Sidebar({
     repositories,
     selectedRepoId,
     onSelectRepository,
-    onAddRepository
+    onAddRepository,
+    onRenameRepository
 }: SidebarProps) {
     return (
         <div className={styles.container}>
@@ -34,6 +36,7 @@ export function Sidebar({
                                 repository={repo}
                                 isSelected={selectedRepoId === repo.id}
                                 onClick={() => onSelectRepository(repo.id)}
+                                onRename={onRenameRepository}
                             />
                         ))}
                     </div>

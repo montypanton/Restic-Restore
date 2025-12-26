@@ -22,6 +22,7 @@ function App() {
     setSelectedRepoId,
     connectRepository,
     removeRepository,
+    renameRepository,
     updateRepositoryStats,
   } = useRepositories();
 
@@ -134,6 +135,7 @@ function App() {
             selectedRepoId={selectedRepoId}
             onSelectRepository={setSelectedRepoId}
             onAddRepository={openAddRepo}
+            onRenameRepository={renameRepository}
           />
         }
         content={

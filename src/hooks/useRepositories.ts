@@ -22,6 +22,7 @@ interface UseRepositoriesReturn {
     onSuccess: (repoId: string, snapshotCount: number) => void
   ) => Promise<void>;
   removeRepository: (repoId: string) => Promise<void>;
+  renameRepository: (repoId: string, newName: string) => Promise<void>;
   updateRepositoryStats: (repoId: string, stats: Partial<Repository>) => void;
   loading: boolean;
   error: string | undefined;
@@ -170,6 +171,27 @@ export function useRepositories(): UseRepositoriesReturn {
     }
   }, [selectedRepoId]);
 
+  const renameRepository = useCallback(async (repoId: string, newName: string) => {
+    const trimmedName = newName.trim();
+    if (!trimmedName) {
+      setError('Repository name cannot be empty');
+      return;
+    }
+
+    setRepositories(prev =>
+      prev.map(r =>
+        r.id === repoId
+          ? { ...r, name: trimmedName }
+          : r
+      )
+    );
+
+    const updatedRepos = repositories.map(r =>
+      r.id === repoId ? { ...r, name: trimmedName } : r
+    );
+    await saveRepositoriesToDisk(updatedRepos);
+  }, [repositories, saveRepositoriesToDisk]);
+
   const updateRepositoryStats = useCallback((repoId: string, stats: Partial<Repository>) => {
     setRepositories(prev =>
       prev.map(r =>
@@ -196,6 +218,7 @@ export function useRepositories(): UseRepositoriesReturn {
     setSelectedRepoId,
     connectRepository,
     removeRepository,
+    renameRepository,
     updateRepositoryStats,
     loading,
     error,
