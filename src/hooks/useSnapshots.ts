@@ -192,8 +192,7 @@ export function useSnapshots(): UseSnapshotsReturn {
       // Fetch stats in batches
       setRepoLoadingState(repoId, {
         type: 'fetching-stats',
-        current: 0,
-        total: newSnapshots.length
+        processed: 0
       });
 
       const batchSize = CACHE.STATS_BATCH_SIZE;
@@ -237,11 +236,13 @@ export function useSnapshots(): UseSnapshotsReturn {
           }
         }
 
-        setRepoLoadingState(repoId, {
-          type: 'fetching-stats',
-          current: Math.min(i + batchSize, newSnapshots.length),
-          total: newSnapshots.length
-        });
+        // Only update loading state if this is the active repo
+        if (currentActiveRepoId === repoId) {
+          setRepoLoadingState(repoId, {
+            type: 'fetching-stats',
+            processed: Math.min(i + batchSize, newSnapshots.length)
+          });
+        }
       }
 
       await invoke('update_last_delta_check', { repoId });
@@ -383,12 +384,6 @@ export function useSnapshots(): UseSnapshotsReturn {
     console.log(`📦 fetchAndSaveBatch: Processing ${snapshots.length} snapshots in batches of ${batchSize}`);
 
     for (let i = 0; i < snapshots.length; i += batchSize) {
-      // Check if user switched repos
-      if (currentActiveRepoId !== repoId) {
-        console.log(`🛑 Aborting batch fetch, repo changed from ${repoId} to ${currentActiveRepoId}`);
-        return;
-      }
-
       const batch = snapshots.slice(i, i + batchSize);
       console.log(`  📦 Processing batch ${Math.floor(i / batchSize) + 1}: ${batch.length} snapshots`);
 
@@ -426,13 +421,13 @@ export function useSnapshots(): UseSnapshotsReturn {
         if (cache) {
           cache.snapshots = uiSnapshots;
         }
-      }
 
-      setRepoLoadingState(repoId, {
-        type: 'fetching-stats',
-        current: startIndex + i + batch.length,
-        total: totalCount
-      });
+        // Update loading state only for active repo
+        setRepoLoadingState(repoId, {
+          type: 'fetching-stats',
+          processed: startIndex + i + batch.length
+        });
+      }
     }
   }, [convertDbSnapshotToUi, safeSetSnapshots, setRepoLoadingState]);
 
@@ -502,8 +497,7 @@ export function useSnapshots(): UseSnapshotsReturn {
     // Start loading indicator
     setRepoLoadingState(repoId, {
       type: 'fetching-stats',
-      current: 0,
-      total: missingStats.length
+      processed: 0
     });
 
     // Fetch in background (non-blocking)
@@ -538,14 +532,8 @@ export function useSnapshots(): UseSnapshotsReturn {
   ) => {
     console.time(`Load snapshots for ${repoId}`);
 
-    // CRITICAL: Cancel any previous background sync when repo changes
-    if (currentActiveRepoId !== repoId && currentActiveRepoId !== null) {
-      const previousCache = memoryCacheMap.get(currentActiveRepoId);
-      if (previousCache?.activeBackgroundSync) {
-        previousCache.activeBackgroundSync.abort();
-        console.log(`🛑 Cancelled background sync for ${currentActiveRepoId}`);
-      }
-    }
+    // Note: We no longer cancel background sync when switching repos
+    // This allows delta checks to complete in the background
 
     currentActiveRepoId = repoId;
     currentRepoIdRef.current = repoId;

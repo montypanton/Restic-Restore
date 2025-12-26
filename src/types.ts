@@ -75,5 +75,6 @@ export interface LoadingState {
     type: LoadingStateType;
     current?: number;
     total?: number;
+    processed?: number;
     snapshotName?: string;
 }

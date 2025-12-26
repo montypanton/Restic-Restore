@@ -16,7 +16,7 @@ export function LoadingIndicator({ state }: LoadingIndicatorProps) {
             <span className={styles.text}>
                 {state.type === 'background-sync' && 'Checking for new snapshots...'}
                 {state.type === 'fetching-stats' && (
-                    `Loading stats ${state.current}/${state.total}`
+                    `Loading stats: ${state.processed ?? 0}`
                 )}
                 {state.type === 'manual-load' && (
                     `Loading stats for ${state.snapshotName}`
