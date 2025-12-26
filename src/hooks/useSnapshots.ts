@@ -14,6 +14,7 @@ interface RepositoryCache {
   snapshots: SnapshotWithStats[];
   loadedAt: number;
   activeBackgroundSync: AbortController | null;
+  syncInProgress: boolean; // Prevent concurrent syncs for same repo
 }
 
 interface UseSnapshotsReturn {
@@ -42,6 +43,9 @@ interface UseSnapshotsReturn {
 const memoryCacheMap = new Map<string, RepositoryCache>();
 let currentActiveRepoId: string | null = null;
 
+// Per-repository loading states
+const loadingStateMap = new Map<string, LoadingState>();
+
 /**
  * Ultra-efficient SQLite-based snapshot management with perfect state isolation
  */
@@ -53,6 +57,25 @@ export function useSnapshots(): UseSnapshotsReturn {
 
   // Track current repo to prevent cross-contamination
   const currentRepoIdRef = useRef<string | null>(null);
+
+  /**
+   * Get loading state for a specific repository
+   */
+  const getRepoLoadingState = useCallback((repoId: string): LoadingState => {
+    return loadingStateMap.get(repoId) || { type: 'idle' };
+  }, []);
+
+  /**
+   * Set loading state for a specific repository
+   */
+  const setRepoLoadingState = useCallback((repoId: string, state: LoadingState) => {
+    loadingStateMap.set(repoId, state);
+
+    // If this is the current active repo, update the component state
+    if (currentActiveRepoId === repoId && currentRepoIdRef.current === repoId) {
+      setLoadingState(state);
+    }
+  }, []);
 
   /**
    * Safe setState wrapper - only updates if repo matches current active repo
@@ -132,7 +155,7 @@ export function useSnapshots(): UseSnapshotsReturn {
       return;
     }
 
-    setLoadingState({ type: 'background-sync' });
+    setRepoLoadingState(repoId, { type: 'background-sync' });
 
     try {
       // Fetch fresh snapshot list
@@ -153,7 +176,7 @@ export function useSnapshots(): UseSnapshotsReturn {
       if (newSnapshots.length === 0) {
         console.log(`✅ No new snapshots for ${repoId}`);
         await invoke('update_last_delta_check', { repoId });
-        setLoadingState({ type: 'idle' });
+        setRepoLoadingState(repoId, { type: 'idle' });
         return;
       }
 
@@ -166,7 +189,7 @@ export function useSnapshots(): UseSnapshotsReturn {
       });
 
       // Fetch stats in batches
-      setLoadingState({
+      setRepoLoadingState(repoId, {
         type: 'fetching-stats',
         current: 0,
         total: newSnapshots.length
@@ -207,7 +230,7 @@ export function useSnapshots(): UseSnapshotsReturn {
           safeSetSnapshots(repoId, uiSnapshots);
         }
 
-        setLoadingState({
+        setRepoLoadingState(repoId, {
           type: 'fetching-stats',
           current: Math.min(i + batchSize, newSnapshots.length),
           total: newSnapshots.length
@@ -220,9 +243,9 @@ export function useSnapshots(): UseSnapshotsReturn {
     } catch (err) {
       console.error('Delta check error:', err);
     } finally {
-      setLoadingState({ type: 'idle' });
+      setRepoLoadingState(repoId, { type: 'idle' });
     }
-  }, [convertDbSnapshotToUi, safeSetSnapshots]);
+  }, [convertDbSnapshotToUi, safeSetSnapshots, setRepoLoadingState]);
 
   /**
    * Perform full sync (first run only)
@@ -234,6 +257,26 @@ export function useSnapshots(): UseSnapshotsReturn {
   ): Promise<void> => {
     console.log(`🔄 ========== FULL SYNC START for ${repoId} ==========`);
     console.time(`Full sync for ${repoId}`);
+
+    // Check if sync already in progress for this repo
+    const cache = memoryCacheMap.get(repoId);
+    if (cache?.syncInProgress) {
+      console.warn(`⚠️ Sync already in progress for ${repoId}, skipping duplicate sync`);
+      return;
+    }
+
+    // Mark sync as in progress
+    if (cache) {
+      cache.syncInProgress = true;
+    } else {
+      memoryCacheMap.set(repoId, {
+        repoId,
+        snapshots: [],
+        loadedAt: 0,
+        activeBackgroundSync: null,
+        syncInProgress: true
+      });
+    }
 
     try {
       // Fetch all snapshots
@@ -271,7 +314,7 @@ export function useSnapshots(): UseSnapshotsReturn {
       console.log(`📊 Will fetch stats: ${prioritySnapshots.length} priority + ${remainingSnapshots.length} remaining = ${allSnapshots.length} total`);
 
       // Priority batch
-      setLoadingState({
+      setRepoLoadingState(repoId, {
         type: 'fetching-stats',
         current: 0,
         total: allSnapshots.length
@@ -299,7 +342,7 @@ export function useSnapshots(): UseSnapshotsReturn {
       }
 
       await invoke('update_last_delta_check', { repoId });
-      setLoadingState({ type: 'idle' });
+      setRepoLoadingState(repoId, { type: 'idle' });
       console.log(`✅ ========== FULL SYNC COMPLETE for ${repoId} ==========`);
       console.timeEnd(`Full sync for ${repoId}`);
 
@@ -307,9 +350,15 @@ export function useSnapshots(): UseSnapshotsReturn {
       console.error('Full sync error:', err);
       setError(`Failed to sync snapshots: ${err}`);
       setLoading(false);
-      setLoadingState({ type: 'idle' });
+      setRepoLoadingState(repoId, { type: 'idle' });
+    } finally {
+      // Clear sync in progress flag
+      const cache = memoryCacheMap.get(repoId);
+      if (cache) {
+        cache.syncInProgress = false;
+      }
     }
-  }, [convertDbSnapshotToUi, safeSetSnapshots]);
+  }, [convertDbSnapshotToUi, safeSetSnapshots, setRepoLoadingState]);
 
   /**
    * Fetch and save a batch of snapshots with stats
@@ -365,13 +414,13 @@ export function useSnapshots(): UseSnapshotsReturn {
         safeSetSnapshots(repoId, uiSnapshots);
       }
 
-      setLoadingState({
+      setRepoLoadingState(repoId, {
         type: 'fetching-stats',
         current: startIndex + i + batch.length,
         total: totalCount
       });
     }
-  }, [convertDbSnapshotToUi, safeSetSnapshots]);
+  }, [convertDbSnapshotToUi, safeSetSnapshots, setRepoLoadingState]);
 
   /**
    * Main load function with complete flow
@@ -395,6 +444,10 @@ export function useSnapshots(): UseSnapshotsReturn {
 
     currentActiveRepoId = repoId;
     currentRepoIdRef.current = repoId;
+
+    // Restore loading state for this repo
+    const repoLoadingState = getRepoLoadingState(repoId);
+    setLoadingState(repoLoadingState);
 
     // STEP 1: Check memory cache (1-hour TTL)
     const cached = memoryCacheMap.get(repoId);
@@ -434,7 +487,8 @@ export function useSnapshots(): UseSnapshotsReturn {
           repoId,
           snapshots: uiSnapshots,
           loadedAt: now,
-          activeBackgroundSync: null
+          activeBackgroundSync: null,
+          syncInProgress: false
         });
 
         // Display immediately
@@ -462,7 +516,8 @@ export function useSnapshots(): UseSnapshotsReturn {
         repoId,
         snapshots: finalUiSnapshots,
         loadedAt: Date.now(),
-        activeBackgroundSync: null
+        activeBackgroundSync: null,
+        syncInProgress: false
       });
 
       onSnapshotsLoaded(repoId, finalUiSnapshots.length);
@@ -479,7 +534,8 @@ export function useSnapshots(): UseSnapshotsReturn {
     safeSetSnapshots,
     convertDbSnapshotToUi,
     queueDeltaCheckIfNeeded,
-    performFullSync
+    performFullSync,
+    getRepoLoadingState
   ]);
 
   /**
@@ -508,7 +564,7 @@ export function useSnapshots(): UseSnapshotsReturn {
     connection: RepositoryConnection,
     formatBytes: (bytes: number) => string
   ) => {
-    setLoadingState({
+    setRepoLoadingState(repoId, {
       type: 'manual-load',
       snapshotName
     });
@@ -552,9 +608,9 @@ export function useSnapshots(): UseSnapshotsReturn {
     } catch (err) {
       console.error('Failed to load single snapshot stats:', err);
     } finally {
-      setLoadingState({ type: 'idle' });
+      setRepoLoadingState(repoId, { type: 'idle' });
     }
-  }, [snapshots, updateSnapshotStats]);
+  }, [snapshots, updateSnapshotStats, setRepoLoadingState]);
 
   /**
    * Clear snapshots (when switching away from repository view)

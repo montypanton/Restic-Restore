@@ -57,7 +57,8 @@ pub fn init_database() -> Result<()> {
     // Create snapshots table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS snapshots (
-            id TEXT PRIMARY KEY,
+            pk INTEGER PRIMARY KEY AUTOINCREMENT,
+            id TEXT NOT NULL,
             repo_id TEXT NOT NULL,
             short_id TEXT NOT NULL,
             time INTEGER NOT NULL,
@@ -68,7 +69,8 @@ pub fn init_database() -> Result<()> {
             parent TEXT,
             tree TEXT,
             program_version TEXT,
-            created_at INTEGER DEFAULT (strftime('%s', 'now'))
+            created_at INTEGER DEFAULT (strftime('%s', 'now')),
+            UNIQUE(repo_id, id)
         )",
         [],
     ).map_err(|e| AppError::Storage(format!("Failed to create snapshots table: {}", e)))?;
@@ -87,17 +89,17 @@ pub fn init_database() -> Result<()> {
     // Create stats table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS stats (
-            snapshot_id TEXT PRIMARY KEY,
+            snapshot_pk INTEGER PRIMARY KEY,
             total_size INTEGER,
             total_file_count INTEGER,
             cached_at INTEGER DEFAULT (strftime('%s', 'now')),
-            FOREIGN KEY (snapshot_id) REFERENCES snapshots(id) ON DELETE CASCADE
+            FOREIGN KEY (snapshot_pk) REFERENCES snapshots(pk) ON DELETE CASCADE
         )",
         [],
     ).map_err(|e| AppError::Storage(format!("Failed to create stats table: {}", e)))?;
 
     conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_stats_snapshot ON stats(snapshot_id)",
+        "CREATE INDEX IF NOT EXISTS idx_stats_snapshot ON stats(snapshot_pk)",
         [],
     ).map_err(|e| AppError::Storage(format!("Failed to create stats index: {}", e)))?;
 
@@ -138,9 +140,9 @@ pub fn load_snapshots_from_db(repo_id: &str) -> Result<Vec<SnapshotWithStats>> {
     let mut stmt = conn.prepare(
         "SELECT s.id, s.repo_id, s.short_id, s.time, s.hostname, s.username,
                 s.paths, s.tags, s.parent, s.tree,
-                st.total_size, st.total_file_count
+                st.total_size, st.total_file_count, s.pk
          FROM snapshots s
-         LEFT JOIN stats st ON s.id = st.snapshot_id
+         LEFT JOIN stats st ON s.pk = st.snapshot_pk
          WHERE s.repo_id = ?1
          ORDER BY s.time DESC"
     ).map_err(|e| AppError::Storage(format!("Failed to prepare query: {}", e)))?;
@@ -193,7 +195,7 @@ pub fn get_cached_snapshot_ids(repo_id: &str) -> Result<Vec<String>> {
 
     let mut stmt = conn.prepare(
         "SELECT s.id FROM snapshots s
-         INNER JOIN stats st ON s.id = st.snapshot_id
+         INNER JOIN stats st ON s.pk = st.snapshot_pk
          WHERE s.repo_id = ?1"
     ).map_err(|e| AppError::Storage(format!("Failed to prepare query: {}", e)))?;
 
@@ -252,13 +254,20 @@ pub fn save_snapshots_batch(repo_id: &str, snapshots: &[SnapshotWithStats]) -> R
             ],
         ).map_err(|e| AppError::Storage(format!("Failed to insert snapshot: {}", e)))?;
 
+        // Get the pk of the snapshot we just inserted
+        let snapshot_pk: i64 = tx.query_row(
+            "SELECT pk FROM snapshots WHERE repo_id = ?1 AND id = ?2",
+            params![repo_id, snapshot.id],
+            |row| row.get(0)
+        ).map_err(|e| AppError::Storage(format!("Failed to get snapshot pk: {}", e)))?;
+
         // Insert or replace stats if available
         if snap_with_stats.total_size.is_some() || snap_with_stats.total_file_count.is_some() {
             tx.execute(
-                "INSERT OR REPLACE INTO stats (snapshot_id, total_size, total_file_count)
+                "INSERT OR REPLACE INTO stats (snapshot_pk, total_size, total_file_count)
                  VALUES (?1, ?2, ?3)",
                 params![
-                    snapshot.id,
+                    snapshot_pk,
                     snap_with_stats.total_size,
                     snap_with_stats.total_file_count,
                 ],
@@ -296,8 +305,9 @@ pub fn save_snapshots_metadata_only(repo_id: &str, snapshots: &[Snapshot]) -> Re
             .transpose()
             .map_err(|e| AppError::Storage(format!("Failed to serialize tags: {}", e)))?;
 
+        // Use INSERT OR REPLACE to ensure snapshots are updated if they already exist
         tx.execute(
-            "INSERT OR IGNORE INTO snapshots
+            "INSERT OR REPLACE INTO snapshots
              (id, repo_id, short_id, time, hostname, username, paths, tags, parent, tree)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
@@ -315,22 +325,18 @@ pub fn save_snapshots_metadata_only(repo_id: &str, snapshots: &[Snapshot]) -> Re
         ).map_err(|e| AppError::Storage(format!("Failed to insert snapshot metadata: {}", e)))?;
     }
 
+    // Verify BEFORE commit (within transaction) to ensure we see the changes
+    let count_in_tx: i64 = tx.query_row(
+        "SELECT COUNT(*) FROM snapshots WHERE repo_id = ?1",
+        params![repo_id],
+        |row| row.get(0)
+    ).map_err(|e| AppError::Storage(format!("Failed to verify snapshot count in transaction: {}", e)))?;
+
     tx.commit()
         .map_err(|e| AppError::Storage(format!("Failed to commit transaction: {}", e)))?;
 
     info!("✅ Metadata save completed: {} snapshots saved to database", snapshots.len());
-
-    // Verify the save by counting snapshots in database
-    let count: i64 = conn_guard.as_ref()
-        .ok_or_else(|| AppError::Storage("Database not initialized".to_string()))?
-        .query_row(
-            "SELECT COUNT(*) FROM snapshots WHERE repo_id = ?1",
-            params![repo_id],
-            |row| row.get(0)
-        )
-        .map_err(|e| AppError::Storage(format!("Failed to verify snapshot count: {}", e)))?;
-
-    info!("🔍 Verification: Database now contains {} total snapshots for repo {}", count, repo_id);
+    info!("🔍 Verification: Database now contains {} total snapshots for repo {}", count_in_tx, repo_id);
     Ok(())
 }
 
