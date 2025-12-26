@@ -45,7 +45,7 @@ fn validate_repository_path(repo: &str) -> Result<()> {
         }
     }
 
-    // Don't check if path exists, user might be initializing a new repo or currently unavalilable
+    // Don't check if path exists - user might be initializing a new repo or it may be temporarily unavailable
     Ok(())
 }
 

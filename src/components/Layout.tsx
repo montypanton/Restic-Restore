@@ -6,9 +6,6 @@ interface LayoutProps {
     content: ReactNode;
 }
 
-/**
- * Main layout component with fixed sidebar and flexible content area.
- */
 export function Layout({ sidebar, content }: LayoutProps) {
     return (
         <div className={styles.container}>

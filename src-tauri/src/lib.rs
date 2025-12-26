@@ -8,7 +8,6 @@ use commands::*;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Initialize tracing subscriber
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -19,18 +18,17 @@ pub fn run() {
 
     tracing::info!("Starting Restic-Restore application");
 
-    // Initialize SQLite database
     match database::init_database() {
         Ok(_) => {
-            tracing::info!("✅ Database initialized successfully");
+            tracing::info!("Database initialized successfully");
         }
         Err(e) => {
-            tracing::error!("❌ CRITICAL: Failed to initialize database: {}", e);
+            tracing::error!("CRITICAL: Failed to initialize database: {}", e);
             tracing::error!("Database features will not work. Please check:");
             tracing::error!("  1. Write permissions to app data directory");
             tracing::error!("  2. Available disk space");
             tracing::error!("  3. Antivirus software blocking file creation");
-            eprintln!("\n🚨 DATABASE INITIALIZATION FAILED: {}\n", e);
+            eprintln!("\nDATABASE INITIALIZATION FAILED: {}\n", e);
         }
     }
 

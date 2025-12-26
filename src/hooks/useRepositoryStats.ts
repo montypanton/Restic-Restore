@@ -9,9 +9,6 @@ interface RepositoryConnection {
 }
 
 interface UseRepositoryStatsReturn {
-  /**
-   * Loads repo size and calls callback.
-   */
   loadRepositoryStats: (
     repoId: string,
     connection: RepositoryConnection,
@@ -20,9 +17,6 @@ interface UseRepositoryStatsReturn {
   ) => Promise<void>;
 }
 
-/**
- * Updates parent state via callbacks.
- */
 export function useRepositoryStats(): UseRepositoryStatsReturn {
   const loadRepositoryStats = useCallback(async (
     repoId: string,

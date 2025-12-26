@@ -7,7 +7,7 @@ use once_cell::sync::Lazy;
 use tracing::{debug, info, error, instrument};
 use serde::{Serialize, Deserialize};
 
-// Global database connection
+// Single global connection to avoid SQLite locking issues
 static DB_CONNECTION: Lazy<Mutex<Option<Connection>>> = Lazy::new(|| Mutex::new(None));
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -24,7 +24,6 @@ pub struct RepoMeta {
     pub snapshot_count: i64,
 }
 
-/// Initialize the SQLite database on app startup
 #[instrument]
 pub fn init_database() -> Result<()> {
     info!("Initializing SQLite database");
@@ -37,7 +36,6 @@ pub fn init_database() -> Result<()> {
 
     info!("Database path: {:?}", db_path);
 
-    // Check if directory exists and is writable
     if !config_dir.exists() {
         info!("Config directory doesn't exist, will be created by rusqlite");
     }
@@ -54,7 +52,6 @@ pub fn init_database() -> Result<()> {
 
     info!("Database configured with WAL mode and foreign keys enabled");
 
-    // Create snapshots table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS snapshots (
             pk INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -75,7 +72,6 @@ pub fn init_database() -> Result<()> {
         [],
     ).map_err(|e| AppError::Storage(format!("Failed to create snapshots table: {}", e)))?;
 
-    // Create indexes
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_snapshots_repo_time ON snapshots(repo_id, time DESC)",
         [],
@@ -86,7 +82,6 @@ pub fn init_database() -> Result<()> {
         [],
     ).map_err(|e| AppError::Storage(format!("Failed to create index: {}", e)))?;
 
-    // Create stats table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS stats (
             snapshot_pk INTEGER PRIMARY KEY,
@@ -113,7 +108,6 @@ pub fn init_database() -> Result<()> {
         [],
     ).map_err(|e| AppError::Storage(format!("Failed to create meta table: {}", e)))?;
 
-    // Store connection globally
     let mut db_conn = DB_CONNECTION.lock()
         .map_err(|e| AppError::Storage(format!("Failed to lock database connection: {}", e)))?;
     *db_conn = Some(conn);
@@ -122,16 +116,14 @@ pub fn init_database() -> Result<()> {
     Ok(())
 }
 
-/// Get a reference to the database connection
 fn get_connection() -> Result<std::sync::MutexGuard<'static, Option<Connection>>> {
     DB_CONNECTION.lock()
         .map_err(|e| AppError::Storage(format!("Failed to lock database connection: {}", e)))
 }
 
-/// Load snapshots from database for a repository
 #[instrument]
 pub fn load_snapshots_from_db(repo_id: &str) -> Result<Vec<SnapshotWithStats>> {
-    info!("📂 Loading snapshots from database for repo: {}", repo_id);
+    info!("Loading snapshots from database for repo: {}", repo_id);
 
     let conn_guard = get_connection()?;
     let conn = conn_guard.as_ref()
@@ -154,7 +146,6 @@ pub fn load_snapshots_from_db(repo_id: &str) -> Result<Vec<SnapshotWithStats>> {
         let tags_str: Option<String> = row.get(7)?;
         let tags: Option<Vec<String>> = tags_str.and_then(|s| serde_json::from_str(&s).ok());
 
-        // Convert Unix timestamp to ISO 8601 string
         let time_unix: i64 = row.get(3)?;
         let time_str = format_unix_timestamp(time_unix);
 
@@ -179,12 +170,11 @@ pub fn load_snapshots_from_db(repo_id: &str) -> Result<Vec<SnapshotWithStats>> {
     let snapshots = snapshots.map_err(|e| AppError::Storage(format!("Failed to fetch snapshots: {}", e)))?;
 
     let with_stats = snapshots.iter().filter(|s| s.total_size.is_some()).count();
-    info!("✅ Loaded {} snapshots from database ({} with stats, {} without stats)",
+    info!("Loaded {} snapshots from database ({} with stats, {} without stats)",
           snapshots.len(), with_stats, snapshots.len() - with_stats);
     Ok(snapshots)
 }
 
-/// Get list of snapshot IDs that have cached stats
 #[instrument]
 pub fn get_cached_snapshot_ids(repo_id: &str) -> Result<Vec<String>> {
     debug!("Getting cached snapshot IDs for repo: {}", repo_id);
@@ -209,10 +199,9 @@ pub fn get_cached_snapshot_ids(repo_id: &str) -> Result<Vec<String>> {
     Ok(ids)
 }
 
-/// Save a batch of snapshots with stats to database
 #[instrument(skip(snapshots), fields(count = snapshots.len()))]
 pub fn save_snapshots_batch(repo_id: &str, snapshots: &[SnapshotWithStats]) -> Result<()> {
-    info!("💾 Saving batch of {} snapshots with stats to database for repo {}", snapshots.len(), repo_id);
+    info!("Saving batch of {} snapshots with stats to database for repo {}", snapshots.len(), repo_id);
 
     let conn_guard = get_connection()?;
     let conn = conn_guard.as_ref()
@@ -224,7 +213,6 @@ pub fn save_snapshots_batch(repo_id: &str, snapshots: &[SnapshotWithStats]) -> R
     for snap_with_stats in snapshots {
         let snapshot = &snap_with_stats.snapshot;
 
-        // Convert time to Unix timestamp
         let time_unix = parse_iso_to_unix(&snapshot.time);
 
         let paths_json = serde_json::to_string(&snapshot.paths)
@@ -235,7 +223,6 @@ pub fn save_snapshots_batch(repo_id: &str, snapshots: &[SnapshotWithStats]) -> R
             .transpose()
             .map_err(|e| AppError::Storage(format!("Failed to serialize tags: {}", e)))?;
 
-        // Insert or replace snapshot
         tx.execute(
             "INSERT OR REPLACE INTO snapshots
              (id, repo_id, short_id, time, hostname, username, paths, tags, parent, tree)
@@ -254,14 +241,12 @@ pub fn save_snapshots_batch(repo_id: &str, snapshots: &[SnapshotWithStats]) -> R
             ],
         ).map_err(|e| AppError::Storage(format!("Failed to insert snapshot: {}", e)))?;
 
-        // Get the pk of the snapshot we just inserted
         let snapshot_pk: i64 = tx.query_row(
             "SELECT pk FROM snapshots WHERE repo_id = ?1 AND id = ?2",
             params![repo_id, snapshot.id],
             |row| row.get(0)
         ).map_err(|e| AppError::Storage(format!("Failed to get snapshot pk: {}", e)))?;
 
-        // Insert or replace stats if available
         if snap_with_stats.total_size.is_some() || snap_with_stats.total_file_count.is_some() {
             tx.execute(
                 "INSERT OR REPLACE INTO stats (snapshot_pk, total_size, total_file_count)
@@ -278,14 +263,14 @@ pub fn save_snapshots_batch(repo_id: &str, snapshots: &[SnapshotWithStats]) -> R
     tx.commit()
         .map_err(|e| AppError::Storage(format!("Failed to commit transaction: {}", e)))?;
 
-    info!("✅ Batch save completed: {} snapshots with stats saved to database", snapshots.len());
+    info!("Batch save completed: {} snapshots with stats saved to database", snapshots.len());
     Ok(())
 }
 
 /// Save snapshots metadata only (without stats)
 #[instrument(skip(snapshots), fields(count = snapshots.len()))]
 pub fn save_snapshots_metadata_only(repo_id: &str, snapshots: &[Snapshot]) -> Result<()> {
-    info!("💾 Saving metadata for {} snapshots to database for repo {}", snapshots.len(), repo_id);
+    info!("Saving metadata for {} snapshots to database for repo {}", snapshots.len(), repo_id);
 
     let conn_guard = get_connection()?;
     let conn = conn_guard.as_ref()
@@ -335,12 +320,11 @@ pub fn save_snapshots_metadata_only(repo_id: &str, snapshots: &[Snapshot]) -> Re
     tx.commit()
         .map_err(|e| AppError::Storage(format!("Failed to commit transaction: {}", e)))?;
 
-    info!("✅ Metadata save completed: {} snapshots saved to database", snapshots.len());
-    info!("🔍 Verification: Database now contains {} total snapshots for repo {}", count_in_tx, repo_id);
+    info!("Metadata save completed: {} snapshots saved to database", snapshots.len());
+    info!("Verification: Database now contains {} total snapshots for repo {}", count_in_tx, repo_id);
     Ok(())
 }
 
-/// Update the last delta check timestamp for a repository
 #[instrument]
 pub fn update_last_delta_check(repo_id: &str) -> Result<()> {
     debug!("Updating last delta check for repo: {}", repo_id);
@@ -364,7 +348,6 @@ pub fn update_last_delta_check(repo_id: &str) -> Result<()> {
     Ok(())
 }
 
-/// Get repository metadata
 #[instrument]
 pub fn get_repo_meta(repo_id: &str) -> Result<RepoMeta> {
     debug!("Getting metadata for repo: {}", repo_id);
@@ -402,7 +385,6 @@ pub fn get_repo_meta(repo_id: &str) -> Result<RepoMeta> {
     }
 }
 
-/// Clear all cached data for a repository
 #[instrument]
 pub fn clear_repo_cache(repo_id: &str) -> Result<()> {
     info!("Clearing cache for repo: {}", repo_id);
@@ -418,7 +400,6 @@ pub fn clear_repo_cache(repo_id: &str) -> Result<()> {
     tx.execute("DELETE FROM snapshots WHERE repo_id = ?1", params![repo_id])
         .map_err(|e| AppError::Storage(format!("Failed to delete snapshots: {}", e)))?;
 
-    // Delete metadata
     tx.execute("DELETE FROM meta WHERE repo_id = ?1", params![repo_id])
         .map_err(|e| AppError::Storage(format!("Failed to delete metadata: {}", e)))?;
 
@@ -429,9 +410,7 @@ pub fn clear_repo_cache(repo_id: &str) -> Result<()> {
     Ok(())
 }
 
-/// Helper function to parse ISO 8601 timestamp to Unix timestamp
 fn parse_iso_to_unix(iso_time: &str) -> i64 {
-    // Try to parse ISO 8601 format
     if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(iso_time) {
         return dt.timestamp();
     }
@@ -446,7 +425,6 @@ fn parse_iso_to_unix(iso_time: &str) -> i64 {
     0
 }
 
-/// Helper function to format Unix timestamp to ISO 8601 string
 fn format_unix_timestamp(unix_time: i64) -> String {
     use chrono::{DateTime, Utc};
     let dt = DateTime::from_timestamp(unix_time, 0)

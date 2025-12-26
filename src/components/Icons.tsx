@@ -1,7 +1,3 @@
-/**
- * SVG icons with consistent size and styling.
- */
-
 interface IconProps {
   className?: string;
   size?: number;

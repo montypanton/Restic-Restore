@@ -27,9 +27,6 @@ interface UseRepositoriesReturn {
   error: string | undefined;
 }
 
-/**
- * Manages repositories with save/load and connections.
- */
 export function useRepositories(): UseRepositoriesReturn {
   const [repositories, setRepositories] = useState<Repository[]>([]);
   const [repoConnections, setRepoConnections] = useState<Map<string, RepositoryConnection>>(new Map());
@@ -38,7 +35,7 @@ export function useRepositories(): UseRepositoriesReturn {
   const [error, setError] = useState<string | undefined>(undefined);
 
   /**
-   * TODO: Passwords stored in plain text. Move to OS keychain later.
+   * TODO: Passwords stored in plain text. Move to OS secure keychain.
    */
   const saveRepositoriesToDisk = useCallback(async (repos: Repository[]) => {
     try {
@@ -55,9 +52,6 @@ export function useRepositories(): UseRepositoriesReturn {
     }
   }, []);
 
-  /**
-   * Selects first repo if available.
-   */
   const loadRepositoriesFromDisk = useCallback(async () => {
     try {
       const savedRepos = await invoke<SavedRepository[]>('load_repositories');
@@ -94,9 +88,7 @@ export function useRepositories(): UseRepositoriesReturn {
     }
   }, []);
 
-  /**
-   * Tests connection by listing snapshots.
-   */
+  // Validates credentials by attempting to list snapshots (fastest connection test)
   const connectRepository = useCallback(async (
     repoPath: string,
     password: string,
@@ -106,7 +98,6 @@ export function useRepositories(): UseRepositoriesReturn {
       setLoading(true);
       setError(undefined);
 
-      // Test connection
       const snapshotList = await invoke<Snapshot[]>('list_snapshots', {
         repo: repoPath,
         password: password
@@ -149,9 +140,6 @@ export function useRepositories(): UseRepositoriesReturn {
     }
   }, [repositories, saveRepositoriesToDisk]);
 
-  /**
-   * Asks for confirmation before removing.
-   */
   const removeRepository = useCallback(async (repoId: string) => {
     const confirmed = await ask(
       'Are you sure you want to remove this repository? This will delete the local cache but not affect the actual backup repository.',

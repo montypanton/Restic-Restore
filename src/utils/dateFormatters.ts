@@ -1,7 +1,4 @@
-/**
- * @example
- * formatShortDate("2024-01-15T10:30:00Z") // "Jan 15, 2024"
- */
+
 export function formatShortDate(dateString: string): string {
   try {
     const date = new Date(dateString);
@@ -15,10 +12,7 @@ export function formatShortDate(dateString: string): string {
   }
 }
 
-/**
- * @example
- * formatTime("2024-01-15T10:30:00Z") // "10:30 AM"
- */
+
 export function formatTime(dateString: string): string {
   try {
     const date = new Date(dateString);
@@ -31,14 +25,7 @@ export function formatTime(dateString: string): string {
   }
 }
 
-/**
- * Shows "just now", "5 minutes ago", "2 hours ago", "3 days ago", or full date.
- *
- * @example
- * formatRelativeTime(twoMinutesAgo) // "2 minutes ago"
- * formatRelativeTime(yesterday) // "1 day ago"
- * formatRelativeTime(lastWeek) // "Jan 8, 2024"
- */
+
 export function formatRelativeTime(dateString: string): string {
   try {
     const date = new Date(dateString);

@@ -10,9 +10,6 @@ interface State {
   errorInfo: string | null;
 }
 
-/**
- * Catches React errors and shows fallback UI.
- */
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);

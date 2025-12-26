@@ -2,8 +2,8 @@ export const CACHE = {
   // Memory cache TTL (1 hour)
   SNAPSHOT_TTL_MS: 60 * 60 * 1000,
 
-  // Background delta check interval (2 hours)
-  DELTA_CHECK_INTERVAL_MS: 2 * 60 * 60 * 1000,
+  // Background delta check interval (30 minutes)
+  DELTA_CHECK_INTERVAL_MS: 30 * 60 * 1000,
 
   /** Batch size for parallel stats fetching */
   STATS_BATCH_SIZE: 5,
