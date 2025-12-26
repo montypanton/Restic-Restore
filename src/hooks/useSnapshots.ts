@@ -15,6 +15,7 @@ interface RepositoryCache {
   loadedAt: number;
   activeBackgroundSync: AbortController | null;
   syncInProgress: boolean; // Prevent concurrent syncs for same repo
+  statsBackfillInProgress: boolean; // Prevent concurrent stats backfills
 }
 
 interface UseSnapshotsReturn {
@@ -274,7 +275,8 @@ export function useSnapshots(): UseSnapshotsReturn {
         snapshots: [],
         loadedAt: 0,
         activeBackgroundSync: null,
-        syncInProgress: true
+        syncInProgress: true,
+        statsBackfillInProgress: false
       });
     }
 
@@ -423,6 +425,97 @@ export function useSnapshots(): UseSnapshotsReturn {
   }, [convertDbSnapshotToUi, safeSetSnapshots, setRepoLoadingState]);
 
   /**
+   * Queue background fetch for snapshots missing stats
+   */
+  const queueMissingStatsFetch = useCallback(async (
+    repoId: string,
+    connection: RepositoryConnection,
+    formatBytes: (bytes: number) => string,
+    snapshots: SnapshotWithStats[]
+  ): Promise<void> => {
+    // Find snapshots without stats
+    const missingStats = snapshots.filter(s => !s.size || !s.fileCount);
+
+    if (missingStats.length === 0) {
+      console.log(`✅ All snapshots have stats for ${repoId}`);
+      setRepoLoadingState(repoId, { type: 'idle' });
+      return;
+    }
+
+    console.log(`📊 Queueing stats fetch for ${missingStats.length} snapshots in ${repoId}`);
+
+    // Check if backfill already in progress
+    const cache = memoryCacheMap.get(repoId);
+    if (cache?.statsBackfillInProgress) {
+      console.log(`⚠️ Stats backfill already in progress for ${repoId}, skipping duplicate`);
+      return;
+    }
+    if (cache?.syncInProgress) {
+      console.log(`⚠️ Sync already in progress for ${repoId}, skipping stats backfill`);
+      return;
+    }
+
+    // Mark backfill as in progress
+    if (cache) {
+      cache.statsBackfillInProgress = true;
+    } else {
+      memoryCacheMap.set(repoId, {
+        repoId,
+        snapshots: [],
+        loadedAt: 0,
+        activeBackgroundSync: null,
+        syncInProgress: false,
+        statsBackfillInProgress: true
+      });
+    }
+
+    // Convert to Snapshot format for fetching
+    const snapshotsToFetch: Snapshot[] = missingStats.map(s => ({
+      id: s.id,
+      short_id: s.short_id,
+      time: s.time,
+      hostname: s.hostname,
+      username: s.username,
+      paths: s.paths,
+      tags: s.tags,
+      parent: s.parent,
+      tree: s.tree,
+    }));
+
+    // Sort by time (newest first) and fetch in batches
+    const sortedByTime = snapshotsToFetch.sort(
+      (a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()
+    );
+
+    // Start loading indicator
+    setRepoLoadingState(repoId, {
+      type: 'fetching-stats',
+      current: 0,
+      total: missingStats.length
+    });
+
+    // Fetch in background (non-blocking)
+    fetchAndSaveBatch(
+      repoId,
+      connection,
+      formatBytes,
+      sortedByTime,
+      0,
+      missingStats.length  // FIX: Use missingStats.length, not snapshots.length
+    ).then(() => {
+      console.log(`✅ Completed stats backfill for ${repoId}`);
+      const cache = memoryCacheMap.get(repoId);
+      if (cache) cache.statsBackfillInProgress = false;
+      setRepoLoadingState(repoId, { type: 'idle' });
+    }).catch(err => {
+      console.error(`Failed to fetch missing stats for ${repoId}:`, err);
+      const cache = memoryCacheMap.get(repoId);
+      if (cache) cache.statsBackfillInProgress = false;
+      setRepoLoadingState(repoId, { type: 'idle' });
+    });
+  }, [fetchAndSaveBatch, setRepoLoadingState]);
+
+  /**
    * Main load function with complete flow
    */
   const loadSnapshots = useCallback(async (
@@ -459,6 +552,9 @@ export function useSnapshots(): UseSnapshotsReturn {
       setLoading(false);
       onSnapshotsLoaded(repoId, cached.snapshots.length);
 
+      // Queue background fetch for missing stats
+      queueMissingStatsFetch(repoId, connection, formatBytes, cached.snapshots);
+
       // Still queue background check if needed
       queueDeltaCheckIfNeeded(repoId, connection, formatBytes);
       console.timeEnd(`Load snapshots for ${repoId}`);
@@ -488,7 +584,8 @@ export function useSnapshots(): UseSnapshotsReturn {
           snapshots: uiSnapshots,
           loadedAt: now,
           activeBackgroundSync: null,
-          syncInProgress: false
+          syncInProgress: false,
+          statsBackfillInProgress: false
         });
 
         // Display immediately
@@ -497,6 +594,9 @@ export function useSnapshots(): UseSnapshotsReturn {
         onSnapshotsLoaded(repoId, uiSnapshots.length);
 
         console.log(`✅ Loaded ${dbSnapshots.length} snapshots from SQLite`);
+
+        // Queue background fetch for missing stats
+        queueMissingStatsFetch(repoId, connection, formatBytes, uiSnapshots);
 
         // Check if delta sync needed
         await queueDeltaCheckIfNeeded(repoId, connection, formatBytes);
@@ -517,7 +617,8 @@ export function useSnapshots(): UseSnapshotsReturn {
         snapshots: finalUiSnapshots,
         loadedAt: Date.now(),
         activeBackgroundSync: null,
-        syncInProgress: false
+        syncInProgress: false,
+        statsBackfillInProgress: false
       });
 
       onSnapshotsLoaded(repoId, finalUiSnapshots.length);
@@ -534,6 +635,7 @@ export function useSnapshots(): UseSnapshotsReturn {
     safeSetSnapshots,
     convertDbSnapshotToUi,
     queueDeltaCheckIfNeeded,
+    queueMissingStatsFetch,
     performFullSync,
     getRepoLoadingState
   ]);
