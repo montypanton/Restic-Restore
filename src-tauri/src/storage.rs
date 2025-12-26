@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use std::collections::HashMap;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SavedRepository {
@@ -18,17 +17,6 @@ pub struct AppConfig {
     pub restic_binary_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub setup_completed: Option<bool>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct SnapshotStats {
-    pub total_size: u64,
-    pub total_file_count: u64,
-}
-
-#[derive(Debug, Serialize, Deserialize, Default)]
-pub struct StatsCache {
-    pub stats: HashMap<String, SnapshotStats>,
 }
 
 pub fn get_config_dir() -> Result<PathBuf, String> {
@@ -76,49 +64,5 @@ pub fn load_config() -> Result<AppConfig, String> {
         .map_err(|e| format!("Failed to parse config file: {}", e))?;
     
     Ok(config)
-}
-
-pub fn get_stats_cache_path(repo_id: &str) -> Result<PathBuf, String> {
-    let config_dir = get_config_dir()?;
-    Ok(config_dir.join(format!("stats_cache_{}.json", repo_id)))
-}
-
-pub fn save_stats_cache(repo_id: &str, cache: &StatsCache) -> Result<(), String> {
-    let cache_path = get_stats_cache_path(repo_id)?;
-    
-    let json = serde_json::to_string_pretty(cache)
-        .map_err(|e| format!("Failed to serialize stats cache: {}", e))?;
-    
-    fs::write(&cache_path, json)
-        .map_err(|e| format!("Failed to write stats cache file: {}", e))?;
-    
-    Ok(())
-}
-
-pub fn load_stats_cache(repo_id: &str) -> Result<StatsCache, String> {
-    let cache_path = get_stats_cache_path(repo_id)?;
-    
-    if !cache_path.exists() {
-        return Ok(StatsCache::default());
-    }
-    
-    let json = fs::read_to_string(&cache_path)
-        .map_err(|e| format!("Failed to read stats cache file: {}", e))?;
-    
-    let cache: StatsCache = serde_json::from_str(&json)
-        .map_err(|e| format!("Failed to parse stats cache file: {}", e))?;
-    
-    Ok(cache)
-}
-
-pub fn delete_stats_cache(repo_id: &str) -> Result<(), String> {
-    let cache_path = get_stats_cache_path(repo_id)?;
-    
-    if cache_path.exists() {
-        fs::remove_file(&cache_path)
-            .map_err(|e| format!("Failed to delete stats cache file: {}", e))?;
-    }
-    
-    Ok(())
 }
 

@@ -1,13 +1,13 @@
-import { Repository } from '../types';
+import { Repository, LoadingState } from '../types';
 import { formatRelativeTime } from '../utils/dateFormatters';
+import { LoadingIndicator } from './LoadingIndicator';
 import styles from './Header.module.css';
 
 interface HeaderProps {
     repository: Repository;
     snapshotCount: number;
     lastBackupTime?: string;
-    onRefresh?: () => void;
-    isRefreshing?: boolean;
+    loadingState: LoadingState;
     onSettings?: () => void;
 }
 
@@ -15,8 +15,7 @@ export function Header({
     repository,
     snapshotCount,
     lastBackupTime,
-    onRefresh,
-    isRefreshing = false,
+    loadingState,
     onSettings
 }: HeaderProps) {
     const lastBackupFormatted = lastBackupTime ? formatRelativeTime(lastBackupTime) : 'Never';
@@ -28,16 +27,7 @@ export function Header({
                 <span>
                     {snapshotCount} snapshot{snapshotCount !== 1 ? 's' : ''} • Last backup: {lastBackupFormatted}
                 </span>
-                {onRefresh && (
-                    <button
-                        onClick={onRefresh}
-                        disabled={isRefreshing}
-                        className={styles.refreshButton}
-                        title="Refresh snapshots"
-                    >
-                        {isRefreshing ? 'Refreshing...' : 'Refresh'}
-                    </button>
-                )}
+                <LoadingIndicator state={loadingState} />
                 {onSettings && (
                     <button
                         onClick={onSettings}

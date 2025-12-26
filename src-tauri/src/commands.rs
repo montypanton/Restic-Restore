@@ -1,6 +1,7 @@
 use crate::error::{AppError, Result};
 use crate::models::{Snapshot, FileNode};
-use crate::storage::{SavedRepository, StatsCache, save_config, load_config, save_stats_cache, load_stats_cache, delete_stats_cache};
+use crate::storage::{SavedRepository, save_config, load_config};
+use crate::database::{self, SnapshotWithStats as DbSnapshotWithStats, RepoMeta};
 use std::process::Command;
 use std::path::{Path, PathBuf, Component};
 use tauri::command;
@@ -582,21 +583,6 @@ pub async fn get_config_path() -> std::result::Result<String, String> {
 }
 
 #[command]
-pub async fn save_snapshot_stats_cache(repo_id: String, cache: StatsCache) -> std::result::Result<(), String> {
-    validate_repo_id(&repo_id)?;
-
-    save_stats_cache(&repo_id, &cache).map_err(|e| AppError::Storage(e))?;
-    Ok(())
-}
-
-#[command]
-pub async fn load_snapshot_stats_cache(repo_id: String) -> std::result::Result<StatsCache, String> {
-    validate_repo_id(&repo_id)?;
-
-    Ok(load_stats_cache(&repo_id).map_err(|e| AppError::Storage(e))?)
-}
-
-#[command]
 #[instrument]
 pub async fn remove_repository(repo_id: String) -> std::result::Result<(), String> {
     info!("Removing repository: {}", repo_id);
@@ -605,7 +591,7 @@ pub async fn remove_repository(repo_id: String) -> std::result::Result<(), Strin
     let mut config = load_config().map_err(|e| AppError::Storage(e))?;
     config.repositories.retain(|r| r.id != repo_id);
     save_config(&config).map_err(|e| AppError::Storage(e))?;
-    delete_stats_cache(&repo_id).map_err(|e| AppError::Storage(e))?;
+    database::clear_repo_cache(&repo_id)?;
     info!("Repository removed successfully");
     Ok(())
 }
@@ -662,5 +648,67 @@ pub async fn mark_setup_completed() -> std::result::Result<(), String> {
     config.setup_completed = Some(true);
     save_config(&config).map_err(|e| AppError::Storage(e))?;
     info!("Setup marked as completed");
+    Ok(())
+}
+
+// ========== SQLite Database Commands ==========
+
+#[command]
+#[instrument]
+pub async fn init_database_command() -> std::result::Result<(), String> {
+    database::init_database()?;
+    Ok(())
+}
+
+#[command]
+#[instrument]
+pub async fn load_snapshots_from_db(repo_id: String) -> std::result::Result<Vec<DbSnapshotWithStats>, String> {
+    validate_repo_id(&repo_id)?;
+    Ok(database::load_snapshots_from_db(&repo_id)?)
+}
+
+#[command]
+#[instrument]
+pub async fn get_cached_snapshot_ids(repo_id: String) -> std::result::Result<Vec<String>, String> {
+    validate_repo_id(&repo_id)?;
+    Ok(database::get_cached_snapshot_ids(&repo_id)?)
+}
+
+#[command]
+#[instrument(skip(snapshots), fields(count = snapshots.len()))]
+pub async fn save_snapshots_batch(repo_id: String, snapshots: Vec<DbSnapshotWithStats>) -> std::result::Result<(), String> {
+    validate_repo_id(&repo_id)?;
+    database::save_snapshots_batch(&repo_id, &snapshots)?;
+    Ok(())
+}
+
+#[command]
+#[instrument(skip(snapshots), fields(count = snapshots.len()))]
+pub async fn save_snapshots_metadata_only(repo_id: String, snapshots: Vec<Snapshot>) -> std::result::Result<(), String> {
+    validate_repo_id(&repo_id)?;
+    database::save_snapshots_metadata_only(&repo_id, &snapshots)?;
+    Ok(())
+}
+
+#[command]
+#[instrument]
+pub async fn update_last_delta_check(repo_id: String) -> std::result::Result<(), String> {
+    validate_repo_id(&repo_id)?;
+    database::update_last_delta_check(&repo_id)?;
+    Ok(())
+}
+
+#[command]
+#[instrument]
+pub async fn get_repo_meta(repo_id: String) -> std::result::Result<RepoMeta, String> {
+    validate_repo_id(&repo_id)?;
+    Ok(database::get_repo_meta(&repo_id)?)
+}
+
+#[command]
+#[instrument]
+pub async fn clear_repo_cache(repo_id: String) -> std::result::Result<(), String> {
+    validate_repo_id(&repo_id)?;
+    database::clear_repo_cache(&repo_id)?;
     Ok(())
 }

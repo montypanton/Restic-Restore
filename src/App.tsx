@@ -8,12 +8,10 @@ import { SettingsWindow } from './components/SettingsWindow';
 import { SnapshotWithStats } from './types';
 import { useRepositories } from './hooks/useRepositories';
 import { useSnapshots } from './hooks/useSnapshots';
-import { useSnapshotStats } from './hooks/useSnapshotStats';
 import { useRepositoryStats } from './hooks/useRepositoryStats';
 import { useWindowState } from './hooks/useWindowState';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { formatBytes } from './utils/formatters';
-import { TIMING } from './config/constants';
 
 function App() {
   const {
@@ -30,16 +28,12 @@ function App() {
   const {
     snapshots,
     loading: snapshotLoading,
-    isRefreshing,
+    loadingState,
     error: snapshotError,
     loadSnapshots,
-    refreshSnapshots,
-    updateSnapshotStats,
-    updateMultipleSnapshotStats,
+    loadSingleSnapshotStats,
     clearSnapshots,
   } = useSnapshots();
-
-  const { loadStatsInBackground, loadSingleStats } = useSnapshotStats();
 
   const { loadRepositoryStats } = useRepositoryStats();
 
@@ -71,23 +65,6 @@ function App() {
   }, [selectedRepoId, selectedConnection, loadSnapshots, formatBytes, updateRepositoryStats, clearSnapshots]);
 
   useEffect(() => {
-    if (snapshots.length > 0 && selectedRepoId && selectedConnection) {
-      const snapshotsNeedingStats = snapshots.filter(snap => !snap.size && !snap.fileCount);
-
-      if (snapshotsNeedingStats.length > 0) {
-        loadStatsInBackground(
-          snapshotsNeedingStats,
-          selectedConnection,
-          selectedRepoId,
-          (updates) => {
-            updateMultipleSnapshotStats(updates);
-          }
-        );
-      }
-    }
-  }, [snapshots.length, selectedRepoId, selectedConnection, loadStatsInBackground, updateMultipleSnapshotStats]);
-
-  useEffect(() => {
     if (selectedRepoId && selectedConnection) {
       loadRepositoryStats(
         selectedRepoId,
@@ -99,16 +76,6 @@ function App() {
       );
     }
   }, [selectedRepoId, selectedConnection, loadRepositoryStats, formatBytes, updateRepositoryStats]);
-
-  useEffect(() => {
-    if (!selectedRepoId || !selectedConnection) return;
-
-    const interval = setInterval(() => {
-      refreshSnapshots(selectedRepoId, selectedConnection, formatBytes);
-    }, TIMING.AUTO_REFRESH_INTERVAL_MS);
-
-    return () => clearInterval(interval);
-  }, [selectedRepoId, selectedConnection, refreshSnapshots, formatBytes]);
 
   const handleConnect = useCallback(async (repoPath: string, password: string) => {
     connectRepository(repoPath, password, (repoId, _snapshotCount) => {
@@ -130,23 +97,20 @@ function App() {
     setBrowsingSnapshot({ snapshot, files: [] });
   }, [setBrowsingSnapshot]);
 
-  const handleRefresh = useCallback(async () => {
-    if (!selectedRepoId || !selectedConnection || isRefreshing) return;
-    await refreshSnapshots(selectedRepoId, selectedConnection, formatBytes);
-  }, [selectedRepoId, selectedConnection, isRefreshing, refreshSnapshots, formatBytes]);
-
-  const handleLoadStats = useCallback((snapshotId: string) => {
+  const handleLoadStats = useCallback(async (snapshotId: string) => {
     if (!selectedRepoId || !selectedConnection) return;
 
-    loadSingleStats(
+    const snapshot = snapshots.find(s => s.id === snapshotId);
+    if (!snapshot) return;
+
+    await loadSingleSnapshotStats(
       snapshotId,
-      selectedConnection,
+      snapshot.short_id,
       selectedRepoId,
-      (id, stats) => {
-        updateSnapshotStats(id, stats);
-      }
+      selectedConnection,
+      formatBytes
     );
-  }, [selectedRepoId, selectedConnection, loadSingleStats, updateSnapshotStats]);
+  }, [selectedRepoId, selectedConnection, snapshots, loadSingleSnapshotStats, formatBytes]);
 
   const handleRemoveRepository = useCallback(async () => {
     if (!selectedRepoId) return;
@@ -177,11 +141,10 @@ function App() {
             repository={selectedRepo}
             snapshots={snapshots}
             loading={snapshotLoading}
+            loadingState={loadingState}
             error={snapshotError}
             onBrowse={handleBrowse}
             onLoadStats={handleLoadStats}
-            onRefresh={handleRefresh}
-            isRefreshing={isRefreshing}
             onSettings={openSettings}
             hasRepositories={repositories.length > 0}
             onAddRepository={openAddRepo}
