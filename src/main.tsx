@@ -1,18 +1,23 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import "./styles/reset.css";
+import "./styles/variables.css";
+import "./styles/utilities.css";
 import "./index.css";
 import App from "./App";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { check } from "@tauri-apps/plugin-updater";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { relaunch } from "@tauri-apps/plugin-process";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </React.StrictMode>,
 );
 
-// Check for updates after the app has loaded
 async function checkForUpdates() {
   try {
     const update = await check();
@@ -27,7 +32,6 @@ async function checkForUpdates() {
       );
 
       if (yes) {
-        console.log("Downloading update...");
         await update.downloadAndInstall();
         
         const shouldRelaunch = await ask(
@@ -42,13 +46,10 @@ async function checkForUpdates() {
           await relaunch();
         }
       }
-    } else {
-      console.log("App is up to date");
     }
   } catch (error) {
     console.error("Failed to check for updates:", error);
   }
 }
 
-// Run update check on startup
 checkForUpdates();

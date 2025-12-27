@@ -1,0 +1,88 @@
+/**
+ * ConnectionForm Component Styles
+ * Form for adding new repository connections
+ */
+
+.title {
+  font-size: var(--text-xl);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-primary);
+  margin-bottom: var(--spacing-5);
+}
+
+.formGroup {
+  margin-bottom: var(--spacing-5);
+}
+
+.label {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--color-text-primary);
+  margin-bottom: var(--spacing-2);
+}
+
+.input {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: var(--text-base);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  outline: none;
+  transition: border-color var(--transition-base);
+  font-family: var(--font-family);
+  background-color: var(--color-bg-white);
+  color: var(--color-text-primary);
+}
+
+.input:focus {
+  border-color: var(--color-primary-blue);
+}
+
+.input.error {
+  border-color: var(--color-error);
+}
+
+.errorMessage {
+  padding: 12px;
+  background-color: var(--color-error-bg);
+  border: 1px solid #feb2b2;
+  border-radius: var(--radius-md);
+  color: #c53030;
+  font-size: var(--text-sm);
+  margin-bottom: var(--spacing-4);
+}
+
+.hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  margin-top: 6px;
+}
+
+.validationError {
+  font-size: var(--text-xs);
+  color: var(--color-error);
+  margin-top: 4px;
+}
+
+.submitButton {
+  width: 100%;
+  padding: 12px;
+  font-size: var(--text-base);
+  font-weight: var(--font-medium);
+  background-color: var(--color-primary-blue);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.submitButton:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.submitButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

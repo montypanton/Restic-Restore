@@ -1,5 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { SnapshotWithStats } from '../types';
+import { formatSnapshotId } from '../utils/formatters';
+import { formatShortDate, formatTime } from '../utils/dateFormatters';
+import styles from './TimelineView.module.css';
 
 interface TimelineViewProps {
     snapshots: SnapshotWithStats[];
@@ -9,48 +12,15 @@ interface TimelineViewProps {
     error?: string;
 }
 
-/**
- * Displays snapshots in a timeline view grouped by date.
- * Can expand snapshots to view details and load statistics on demand.
- */
-export const TimelineView: React.FC<TimelineViewProps> = ({
+export function TimelineView({
     snapshots,
     onBrowse,
     onLoadStats,
     loading,
     error
-}) => {
+}: TimelineViewProps) {
     const [expandedSnapshotId, setExpandedSnapshotId] = useState<string | null>(null);
     const [loadingStatsIds, setLoadingStatsIds] = useState<Set<string>>(new Set());
-
-    const formatDate = (dateString: string) => {
-        try {
-            const date = new Date(dateString);
-            return date.toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric'
-            });
-        } catch {
-            return dateString;
-        }
-    };
-
-    const formatTime = (dateString: string) => {
-        try {
-            const date = new Date(dateString);
-            return date.toLocaleTimeString('en-US', {
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-        } catch {
-            return '';
-        }
-    };
-
-    const truncateId = (id: string, shortId?: string) => {
-        return shortId || id.substring(0, 8);
-    };
 
     const sortedSnapshots = useMemo(() => {
         return [...snapshots].sort((a, b) => {
@@ -63,7 +33,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
         let currentDate = '';
 
         sortedSnapshots.forEach((snapshot) => {
-            const date = formatDate(snapshot.time);
+            const date = formatShortDate(snapshot.time);
             if (date !== currentDate) {
                 currentDate = date;
                 groups.push({ date, snapshots: [] });
@@ -87,7 +57,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
         }
     };
 
-    React.useEffect(() => {
+    useEffect(() => {
         setLoadingStatsIds(prev => {
             const updated = new Set(prev);
             let changed = false;
@@ -102,37 +72,9 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
         });
     }, [snapshots]);
 
-    const containerStyle: React.CSSProperties = {
-        overflowY: 'auto',
-        height: '100%',
-        display: 'flex',
-        justifyContent: 'center',
-        paddingTop: '0',
-        paddingBottom: '40px',
-        position: 'relative'
-    };
-
-    const timelineContainerStyle: React.CSSProperties = {
-        maxWidth: '896px',
-        width: '100%',
-        paddingLeft: '24px',
-        paddingRight: '24px',
-        position: 'relative'
-    };
-
-    const emptyStateStyle: React.CSSProperties = {
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100%',
-        color: 'var(--color-text-secondary)',
-        fontSize: '14px'
-    };
-
     if (loading) {
         return (
-            <div style={emptyStateStyle}>
+            <div className={styles.emptyState}>
                 <div>Loading snapshots...</div>
             </div>
         );
@@ -140,44 +82,27 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
 
     if (error) {
         return (
-            <div style={emptyStateStyle}>
-                <div style={{ color: '#ef4444', marginBottom: '8px' }}>Error loading snapshots</div>
-                <div style={{ fontSize: '12px' }}>{error}</div>
+            <div className={styles.errorState}>
+                <div className={styles.errorTitle}>Error loading snapshots</div>
+                <div className={styles.errorMessage}>{error}</div>
             </div>
         );
     }
 
     if (snapshots.length === 0) {
         return (
-            <div style={emptyStateStyle}>
+            <div className={styles.emptyState}>
                 <div>No snapshots available for this repository</div>
             </div>
         );
     }
 
     return (
-        <div style={containerStyle}>
-            <div style={timelineContainerStyle}>
+        <div className={styles.container}>
+            <div className={styles.timelineContainer}>
                 {groupedSnapshots.map((group, groupIndex) => (
-                    <div key={group.date} style={{ position: 'relative' }}>
-                        <div
-                            style={{
-                                position: 'sticky',
-                                top: 0,
-                                fontSize: '18px',
-                                fontWeight: 600,
-                                color: 'var(--color-text-primary)',
-                                marginBottom: '20px',
-                                paddingTop: '20px',
-                                paddingBottom: '16px',
-                                marginTop: '0',
-                                borderBottom: '2px solid var(--color-border)',
-                                backgroundColor: 'var(--color-bg-white)',
-                                zIndex: 100,
-                                boxShadow: '0 2px 0 0 var(--color-bg-white)',
-                                letterSpacing: '0.02em'
-                            }}
-                        >
+                    <div key={group.date} className={styles.dateGroup}>
+                        <div className={styles.dateHeader}>
                             {group.date}
                         </div>
 
@@ -188,153 +113,54 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
                             return (
                                 <div
                                     key={snapshot.id}
-                                    style={{
-                                        marginBottom: index === group.snapshots.length - 1 ? '40px' : '24px',
-                                        position: 'relative',
-                                        zIndex: 1
-                                    }}
+                                    className={styles.snapshotWrapper}
                                 >
                                     <div
-                                        style={{
-                                            border: `${isExpanded ? '2px' : '1px'} solid var(--color-border)`,
-                                            borderRadius: '8px',
-                                            backgroundColor: 'var(--color-bg-white)',
-                                            cursor: 'pointer',
-                                            transition: 'all 0.15s ease',
-                                            overflow: 'hidden',
-                                            position: 'relative',
-                                            zIndex: 0
-                                        }}
+                                        className={`${styles.snapshotCard} ${isExpanded ? styles.expanded : ''}`}
                                         onClick={() => handleToggle(snapshot.id)}
-                                        onMouseEnter={(e) => {
-                                            if (!isExpanded) {
-                                                e.currentTarget.style.backgroundColor = 'var(--color-bg-hover)';
-                                            }
-                                        }}
-                                        onMouseLeave={(e) => {
-                                            e.currentTarget.style.backgroundColor = 'var(--color-bg-white)';
-                                        }}
                                     >
-                                        <div
-                                            style={{
-                                                padding: '16px',
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                                alignItems: 'center'
-                                            }}
-                                        >
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                <span
-                                                    style={{
-                                                        fontSize: '20px',
-                                                        fontWeight: 600,
-                                                        color: 'var(--color-text-primary)',
-                                                        letterSpacing: '0.01em'
-                                                    }}
-                                                >
+                                        <div className={styles.snapshotHeader}>
+                                            <div className={styles.snapshotHeaderLeft}>
+                                                <span className={styles.snapshotTime}>
                                                     {formatTime(snapshot.time)}
                                                 </span>
                                                 {isLatest && (
-                                                    <span
-                                                        style={{
-                                                            border: '1px solid #3b82f6',
-                                                            borderRadius: '9999px',
-                                                            padding: '2px 8px',
-                                                            fontSize: '12px',
-                                                            fontWeight: 500,
-                                                            color: '#3b82f6',
-                                                            backgroundColor: '#eff6ff'
-                                                        }}
-                                                    >
+                                                    <span className={styles.latestBadge}>
                                                         LATEST
                                                     </span>
                                                 )}
                                             </div>
-                                            <div
-                                                style={{
-                                                    fontSize: '20px',
-                                                    transition: 'transform 0.15s ease',
-                                                    transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)'
-                                                }}
-                                            >
+                                            <div className={`${styles.expandIcon} ${isExpanded ? styles.expanded : ''}`}>
                                                 ›
                                             </div>
                                         </div>
 
                                         {isExpanded && (
                                             <div>
-                                                <div
-                                                    style={{
-                                                        borderTop: '1px solid var(--color-border)',
-                                                        margin: '0 16px'
-                                                    }}
-                                                />
+                                                <div className={styles.detailsSection} />
 
-                                                <div
-                                                    style={{
-                                                        padding: '16px',
-                                                        display: 'grid',
-                                                        gridTemplateColumns: 'repeat(3, 1fr)',
-                                                        gap: '16px'
-                                                    }}
-                                                >
-                                                    <div>
-                                                        <div
-                                                            style={{
-                                                                fontSize: '12px',
-                                                                color: 'var(--color-text-secondary)',
-                                                                marginBottom: '4px'
-                                                            }}
-                                                        >
+                                                <div className={styles.detailsGrid}>
+                                                    <div className={styles.detailItem}>
+                                                        <div className={styles.detailLabel}>
                                                             Snapshot ID
                                                         </div>
-                                                        <div
-                                                            style={{
-                                                                fontFamily: 'monospace',
-                                                                fontSize: '14px',
-                                                                color: 'var(--color-text-primary)'
-                                                            }}
-                                                        >
-                                                            {truncateId(snapshot.id, snapshot.short_id)}
+                                                        <div className={`${styles.detailValue} ${styles.mono}`}>
+                                                            {formatSnapshotId(snapshot.id, snapshot.short_id)}
                                                         </div>
                                                     </div>
-                                                    <div>
-                                                        <div
-                                                            style={{
-                                                                fontSize: '12px',
-                                                                color: 'var(--color-text-secondary)',
-                                                                marginBottom: '4px'
-                                                            }}
-                                                        >
+                                                    <div className={styles.detailItem}>
+                                                        <div className={styles.detailLabel}>
                                                             Snapshot Size
                                                         </div>
-                                                        <div
-                                                            style={{
-                                                                fontSize: '14px',
-                                                                color: 'var(--color-text-primary)',
-                                                                fontWeight: 500
-                                                            }}
-                                                        >
+                                                        <div className={styles.detailValue}>
                                                             {loadingStatsIds.has(snapshot.id) ? 'Loading...' : (snapshot.size || '—')}
                                                         </div>
                                                     </div>
-                                                    <div>
-                                                        <div
-                                                            style={{
-                                                                fontSize: '12px',
-                                                                color: 'var(--color-text-secondary)',
-                                                                marginBottom: '4px'
-                                                            }}
-                                                        >
+                                                    <div className={styles.detailItem}>
+                                                        <div className={styles.detailLabel}>
                                                             Files
                                                         </div>
-                                                        <div
-                                                            style={{
-                                                                fontSize: '14px',
-                                                                color: 'var(--color-text-primary)',
-                                                                fontWeight: 500
-                                                            }}
-                                                        >
+                                                        <div className={styles.detailValue}>
                                                             {loadingStatsIds.has(snapshot.id) ? 'Loading...' : (snapshot.fileCount
                                                                 ? snapshot.fileCount.toLocaleString()
                                                                 : '—')}
@@ -342,33 +168,12 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
                                                     </div>
                                                 </div>
 
-                                                <div
-                                                    style={{
-                                                        padding: '0 16px 16px 16px'
-                                                    }}
-                                                >
+                                                <div className={styles.browseButtonWrapper}>
                                                     <button
-                                                        style={{
-                                                            width: '100%',
-                                                            padding: '12px',
-                                                            border: '2px solid var(--color-border)',
-                                                            borderRadius: '8px',
-                                                            backgroundColor: 'var(--color-bg-white)',
-                                                            fontSize: '14px',
-                                                            fontWeight: 600,
-                                                            color: 'var(--color-text-primary)',
-                                                            cursor: 'pointer',
-                                                            transition: 'all 0.15s ease'
-                                                        }}
+                                                        className={styles.browseButton}
                                                         onClick={(e) => {
                                                             e.stopPropagation();
                                                             onBrowse(snapshot);
-                                                        }}
-                                                        onMouseEnter={(e) => {
-                                                            e.currentTarget.style.backgroundColor = 'var(--color-bg-hover)';
-                                                        }}
-                                                        onMouseLeave={(e) => {
-                                                            e.currentTarget.style.backgroundColor = 'var(--color-bg-white)';
                                                         }}
                                                     >
                                                         Browse + Restore Snapshot
@@ -385,5 +190,5 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
             </div>
         </div>
     );
-};
+}
 

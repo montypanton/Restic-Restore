@@ -1,0 +1,54 @@
+/**
+ * RepositoryCard Component Styles
+ * Card displayed in sidebar showing repository information
+ */
+
+.card {
+  background-color: var(--color-bg-white);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-4);
+  margin-bottom: var(--spacing-3);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  color: var(--color-text-primary);
+}
+
+.card:hover:not(.selected) {
+  background-color: var(--color-bg-hover);
+}
+
+.card.selected {
+  border-width: 2px;
+}
+
+.name {
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  margin-bottom: var(--spacing-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-primary);
+}
+
+.nameInput {
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  margin-bottom: var(--spacing-2);
+  width: 100%;
+  padding: 2px 4px;
+  border: 1px solid var(--color-primary-blue);
+  border-radius: 3px;
+  background-color: var(--color-bg-white);
+  color: var(--color-text-primary);
+  outline: none;
+  font-family: inherit;
+}
+
+.stats {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--text-xs);
+  color: var(--color-text-primary);
+}

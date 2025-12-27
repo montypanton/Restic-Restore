@@ -46,6 +46,35 @@ export interface SnapshotStats {
     total_file_count: number;
 }
 
-export interface StatsCache {
-    stats: Record<string, SnapshotStats>;
+export interface ResticSnapshotStats {
+    total_size: number;
+    total_file_count: number;
+}
+
+export interface ResticRepositoryStats {
+    total_size: number;
+}
+
+// SQLite database types (raw data from Rust)
+export interface DbSnapshotWithStats {
+    snapshot: Snapshot;
+    total_size?: number;
+    total_file_count?: number;
+}
+
+export interface RepoMeta {
+    repo_id: string;
+    last_delta_check: number;
+    snapshot_count: number;
+}
+
+// Loading indicator states
+export type LoadingStateType = 'idle' | 'background-sync' | 'fetching-stats' | 'manual-load';
+
+export interface LoadingState {
+    type: LoadingStateType;
+    current?: number;
+    total?: number;
+    processed?: number;
+    snapshotName?: string;
 }

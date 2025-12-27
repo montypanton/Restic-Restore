@@ -1,63 +1,52 @@
-import React from 'react';
+import { useState } from 'react';
 import { Repository } from '../types';
+import styles from './RepositoryCard.module.css';
 
 interface RepositoryCardProps {
     repository: Repository;
     isSelected: boolean;
     onClick: () => void;
+    onRename?: (repoId: string, newName: string) => void;
 }
 
-/**
- * Repository card component displayed in the sidebar.
- * Shows repository name, snapshot count, and total size.
- */
-export const RepositoryCard: React.FC<RepositoryCardProps> = ({
+export function RepositoryCard({
     repository,
     isSelected,
-    onClick
-}) => {
-    const cardStyle: React.CSSProperties = {
-        backgroundColor: 'var(--color-bg-white)',
-        border: `${isSelected ? '2px' : '1px'} solid var(--color-border)`,
-        borderRadius: '8px',
-        padding: '16px',
-        marginBottom: '12px',
-        cursor: 'pointer',
-        transition: 'all 0.15s ease',
-        color: 'var(--color-text-primary)'
+    onClick,
+    onRename
+}: RepositoryCardProps) {
+    const [isEditing, setIsEditing] = useState(false);
+    const [editedName, setEditedName] = useState(repository.name);
+
+    const handleDoubleClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (onRename) {
+            setIsEditing(true);
+            setEditedName(repository.name);
+        }
     };
 
-    const nameStyle: React.CSSProperties = {
-        fontSize: '14px',
-        fontWeight: 600,
-        marginBottom: '8px',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: 'nowrap',
-        color: 'var(--color-text-primary)'
+    const handleBlur = () => {
+        if (editedName.trim() && editedName !== repository.name) {
+            onRename?.(repository.id, editedName);
+        }
+        setIsEditing(false);
     };
 
-    const statsRowStyle: React.CSSProperties = {
-        display: 'flex',
-        justifyContent: 'space-between',
-        fontSize: '12px',
-        color: 'var(--color-text-primary)'
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handleBlur();
+        } else if (e.key === 'Escape') {
+            setIsEditing(false);
+            setEditedName(repository.name);
+        }
     };
 
     return (
         <div
-            style={cardStyle}
+            className={`${styles.card} ${isSelected ? styles.selected : ''}`}
             onClick={onClick}
-            onMouseEnter={(e) => {
-                if (!isSelected) {
-                    e.currentTarget.style.backgroundColor = 'var(--color-bg-hover)';
-                }
-            }}
-            onMouseLeave={(e) => {
-                if (!isSelected) {
-                    e.currentTarget.style.backgroundColor = 'var(--color-bg-white)';
-                }
-            }}
             role="button"
             tabIndex={0}
             aria-pressed={isSelected}
@@ -69,11 +58,30 @@ export const RepositoryCard: React.FC<RepositoryCardProps> = ({
                 }
             }}
         >
-            <div style={nameStyle}>{repository.name}</div>
-            <div style={statsRowStyle}>
+            {isEditing ? (
+                <input
+                    type="text"
+                    className={styles.nameInput}
+                    value={editedName}
+                    onChange={(e) => setEditedName(e.target.value)}
+                    onBlur={handleBlur}
+                    onKeyDown={handleKeyDown}
+                    onClick={(e) => e.stopPropagation()}
+                    autoFocus
+                />
+            ) : (
+                <div
+                    className={styles.name}
+                    onDoubleClick={handleDoubleClick}
+                    title="Double-click to rename"
+                >
+                    {repository.name}
+                </div>
+            )}
+            <div className={styles.stats}>
                 <span>{repository.snapshotCount || 0} snapshots</span>
                 <span>{repository.totalSize || '—'}</span>
             </div>
         </div>
     );
-};
+}

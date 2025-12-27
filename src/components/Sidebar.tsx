@@ -1,84 +1,42 @@
-import React from 'react';
 import { RepositoryCard } from './RepositoryCard';
 import { Repository } from '../types';
+import styles from './Sidebar.module.css';
 
 interface SidebarProps {
     repositories: Repository[];
     selectedRepoId: string | null;
     onSelectRepository: (id: string) => void;
     onAddRepository: () => void;
+    onRenameRepository?: (repoId: string, newName: string) => void;
 }
 
-/**
- * Sidebar component displaying list of saved repositories and add repository button.
- */
-export const Sidebar: React.FC<SidebarProps> = ({
+export function Sidebar({
     repositories,
     selectedRepoId,
     onSelectRepository,
-    onAddRepository
-}) => {
-    const containerStyle: React.CSSProperties = {
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%'
-    };
-
-    const headerStyle: React.CSSProperties = {
-        marginBottom: '20px'
-    };
-
-    const titleStyle: React.CSSProperties = {
-        fontSize: '20px',
-        fontWeight: 600,
-        color: 'var(--color-text-primary)'
-    };
-
-    const emptyStateStyle: React.CSSProperties = {
-        textAlign: 'center',
-        padding: '40px 20px',
-        color: 'var(--color-text-secondary)',
-        fontSize: '13px'
-    };
-
-    const repoListStyle: React.CSSProperties = {
-        flex: 1,
-        overflowY: 'auto'
-    };
-
-    const addButtonStyle: React.CSSProperties = {
-        width: '100%',
-        padding: '12px',
-        marginTop: 'auto',
-        border: '1px solid var(--color-border)',
-        borderRadius: '8px',
-        backgroundColor: 'var(--color-bg-white)',
-        cursor: 'pointer',
-        fontSize: '14px',
-        fontWeight: 500,
-        color: 'var(--color-text-primary)',
-        transition: 'all 0.15s ease'
-    };
-
+    onAddRepository,
+    onRenameRepository
+}: SidebarProps) {
     return (
-        <div style={containerStyle}>
+        <div className={styles.container}>
             <div>
-                <div style={headerStyle}>
-                    <div style={titleStyle}>Repositories</div>
+                <div className={styles.header}>
+                    <div className={styles.title}>Repositories</div>
                 </div>
 
                 {repositories.length === 0 ? (
-                    <div style={emptyStateStyle}>
-                        <div style={{ marginBottom: '8px' }}>No repositories</div>
+                    <div className={styles.emptyState}>
+                        <div className={styles.emptyStateText}>No repositories</div>
                     </div>
                 ) : (
-                    <div style={repoListStyle}>
+                    <div className={styles.repoList}>
                         {repositories.map((repo) => (
                             <RepositoryCard
                                 key={repo.id}
                                 repository={repo}
                                 isSelected={selectedRepoId === repo.id}
                                 onClick={() => onSelectRepository(repo.id)}
+                                onRename={onRenameRepository}
                             />
                         ))}
                     </div>
@@ -87,18 +45,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
             {repositories.length > 0 && (
                 <button
-                    style={addButtonStyle}
+                    className={styles.addButton}
                     onClick={onAddRepository}
-                    onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = 'var(--color-bg-hover)';
-                    }}
-                    onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = 'var(--color-bg-white)';
-                    }}
                 >
                     + Add Repository
                 </button>
             )}
         </div>
     );
-};
+}

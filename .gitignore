@@ -30,6 +30,8 @@ src-tauri/gen/
 *.njsproj
 *.sln
 *.sw?
+*.claude
+*CLAUDE.md
 
 # OS specific
 Thumbs.db

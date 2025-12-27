@@ -1,133 +1,37 @@
-import React from 'react';
-import { Repository } from '../types';
+import { Repository, LoadingState } from '../types';
+import { formatRelativeTime } from '../utils/dateFormatters';
+import { LoadingIndicator } from './LoadingIndicator';
+import styles from './Header.module.css';
 
 interface HeaderProps {
     repository: Repository;
     snapshotCount: number;
     lastBackupTime?: string;
-    onRefresh?: () => void;
-    isRefreshing?: boolean;
+    loadingState: LoadingState;
     onSettings?: () => void;
 }
 
-/**
- * Header component displaying repository name, snapshot count, and last backup time.
- */
-export const Header: React.FC<HeaderProps> = ({
+export function Header({
     repository,
     snapshotCount,
     lastBackupTime,
-    onRefresh,
-    isRefreshing = false,
+    loadingState,
     onSettings
-}) => {
-    const containerStyle: React.CSSProperties = {
-        padding: '24px',
-        borderBottom: '1px solid var(--color-border)',
-        backgroundColor: 'var(--color-bg-white)'
-    };
-
-    const titleStyle: React.CSSProperties = {
-        fontSize: '28px',
-        fontWeight: 600,
-        color: 'var(--color-text-primary)',
-        marginBottom: '8px'
-    };
-
-    const subtitleStyle: React.CSSProperties = {
-        fontSize: '14px',
-        color: 'var(--color-text-primary)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '12px'
-    };
-
-    const refreshButtonStyle: React.CSSProperties = {
-        padding: '2px 8px',
-        fontSize: '12px',
-        fontWeight: 500,
-        backgroundColor: 'white',
-        border: '1px solid #10b981',
-        borderRadius: '9999px',
-        cursor: isRefreshing ? 'not-allowed' : 'pointer',
-        transition: 'all 0.15s ease',
-        opacity: isRefreshing ? 0.6 : 1,
-        color: '#10b981'
-    };
-
-    const settingsButtonStyle: React.CSSProperties = {
-        padding: '2px 8px',
-        fontSize: '12px',
-        fontWeight: 500,
-        backgroundColor: 'white',
-        border: '1px solid var(--color-border)',
-        borderRadius: '9999px',
-        cursor: 'pointer',
-        transition: 'all 0.15s ease'
-    };
-
-
-    const formatLastBackup = (time?: string) => {
-        if (!time) return 'Never';
-        try {
-            const date = new Date(time);
-            const now = new Date();
-            const diffMs = now.getTime() - date.getTime();
-            const diffMins = Math.floor(diffMs / 60000);
-            const diffHours = Math.floor(diffMs / 3600000);
-            const diffDays = Math.floor(diffMs / 86400000);
-
-            if (diffMins < 1) return 'Just now';
-            if (diffMins < 60) return `${diffMins} minute${diffMins !== 1 ? 's' : ''} ago`;
-            if (diffHours < 24) return `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
-            if (diffDays === 1) return '1 day ago';
-            if (diffDays < 7) return `${diffDays} days ago`;
-            
-            return date.toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric'
-            });
-        } catch {
-            return 'Unknown';
-        }
-    };
+}: HeaderProps) {
+    const lastBackupFormatted = lastBackupTime ? formatRelativeTime(lastBackupTime) : 'Never';
 
     return (
-        <div style={containerStyle}>
-            <div style={titleStyle}>{repository.name}</div>
-            <div style={subtitleStyle}>
+        <div className={styles.container}>
+            <div className={styles.title}>{repository.name}</div>
+            <div className={styles.subtitle}>
                 <span>
-                    {snapshotCount} snapshot{snapshotCount !== 1 ? 's' : ''} • Last backup: {formatLastBackup(lastBackupTime)}
+                    {snapshotCount} snapshot{snapshotCount !== 1 ? 's' : ''} • Last backup: {lastBackupFormatted}
                 </span>
-                {onRefresh && (
-                    <button
-                        onClick={onRefresh}
-                        disabled={isRefreshing}
-                        style={refreshButtonStyle}
-                        onMouseEnter={(e) => {
-                            if (!isRefreshing) {
-                                e.currentTarget.style.backgroundColor = '#f0fdf4';
-                            }
-                        }}
-                        onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = 'white';
-                        }}
-                        title="Refresh snapshots"
-                    >
-                        {isRefreshing ? 'Refreshing...' : 'Refresh'}
-                    </button>
-                )}
+                <LoadingIndicator state={loadingState} />
                 {onSettings && (
                     <button
                         onClick={onSettings}
-                        style={settingsButtonStyle}
-                        onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = 'var(--color-bg-hover)';
-                        }}
-                        onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = 'white';
-                        }}
+                        className={styles.settingsButton}
                         title="Repository settings"
                     >
                         Settings
@@ -136,4 +40,4 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
         </div>
     );
-};
+}
