@@ -51,10 +51,11 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: 'Restic Restore v__VERSION__'
+          releaseName: 'Restic Restore ${{ github.ref_name }}'
           releaseBody: 'See the assets to download and install this version.'
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
           tauriScript: npm run tauri
+          includeUpdaterJson: true
 
