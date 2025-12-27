@@ -323,7 +323,7 @@ export function useSnapshots(): UseSnapshotsReturn {
     formatBytes: (bytes: number) => string,
     snapshots: Snapshot[],
     startIndex: number,
-    totalCount: number
+    _totalCount: number
   ): Promise<void> => {
     const batchSize = CACHE.STATS_BATCH_SIZE;
     console.log(` fetchAndSaveBatch: Processing ${snapshots.length} snapshots in batches of ${batchSize}`);
